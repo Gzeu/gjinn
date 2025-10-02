@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gjinn - Your AI Genie of Imagination</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-container">
+                <div class="genie-lamp">
+                    <svg viewBox="0 0 100 100" class="lamp-svg">
+                        <path d="M30,50 Q30,30 50,30 Q70,30 70,50 L65,70 Q65,80 50,80 Q35,80 35,70 Z" fill="#ffd700" stroke="#ff6b35" stroke-width="2"/>
+                        <ellipse cx="50" cy="30" rx="5" ry="8" fill="#ff6b35"/>
+                    </svg>
+                </div>
+                <h1>Gjinn</h1>
+                <p class="tagline">Your AI Genie of Imagination</p>
+            </div>
+        </header>
+
+        <main>
+            <section class="wish-input-section">
+                <div class="input-container">
+                    <textarea id="wishInput" placeholder="Make a wish... (e.g., 'Create a magical landing page' or 'Generate creative content ideas')" rows="4"></textarea>
+                    <button id="makeWishBtn" class="wish-button">
+                        <span class="button-text">Grant My Wish</span>
+                        <span class="sparkle">✨</span>
+                    </button>
+                </div>
+            </section>
+
+            <section class="wishes-display">
+                <h2>Your Wishes</h2>
+                <div id="wishesContainer" class="wishes-grid">
+                    <!-- Wishes will be dynamically added here -->
+                </div>
+            </section>
+
+            <section class="magic-particles" id="magicParticles">
+                <!-- Animated particles will be added here -->
+            </section>
+        </main>
+
+        <footer>
+            <p>Powered by AI Magic | <span class="version">v1.0.0</span></p>
+            <p class="mcp-status">MCP Integration: <span id="mcpStatus">Ready for Setup</span></p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
