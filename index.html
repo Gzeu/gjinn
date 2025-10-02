@@ -7,47 +7,210 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="logo-container">
-                <div class="genie-lamp">
-                    <svg viewBox="0 0 100 100" class="lamp-svg">
-                        <path d="M30,50 Q30,30 50,30 Q70,30 70,50 L65,70 Q65,80 50,80 Q35,80 35,70 Z" fill="#ffd700" stroke="#ff6b35" stroke-width="2"/>
-                        <ellipse cx="50" cy="30" rx="5" ry="8" fill="#ff6b35"/>
-                    </svg>
+    <!-- Magical background stars -->
+    <div class="stars-container">
+        <div class="stars"></div>
+        <div class="stars2"></div>
+        <div class="stars3"></div>
+    </div>
+
+    <!-- Magic particles -->
+    <div class="magic-particles"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="lamp-icon">🧞‍♂️</div>
+                    <h1>Gjinn</h1>
                 </div>
-                <h1>Gjinn</h1>
-                <p class="tagline">Your AI Genie of Imagination</p>
+                <nav class="nav">
+                    <a href="#" class="nav-link active" data-section="home">Home</a>
+                    <a href="#" class="nav-link" data-section="wishes">My Wishes</a>
+                    <a href="#" class="nav-link" data-section="gallery">Gallery</a>
+                    <a href="#" class="nav-link" data-section="settings">Settings</a>
+                </nav>
+                <div class="user-profile">
+                    <div class="avatar">👤</div>
+                </div>
             </div>
-        </header>
+        </div>
+    </header>
 
-        <main>
-            <section class="wish-input-section">
-                <div class="input-container">
-                    <textarea id="wishInput" placeholder="Make a wish... (e.g., 'Create a magical landing page' or 'Generate creative content ideas')" rows="4"></textarea>
-                    <button id="makeWishBtn" class="wish-button">
-                        <span class="button-text">Grant My Wish</span>
-                        <span class="sparkle">✨</span>
-                    </button>
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- Home Section -->
+            <section id="home" class="section active">
+                <div class="hero">
+                    <div class="hero-content">
+                        <h2 class="hero-title">Unleash the Magic of Imagination</h2>
+                        <p class="hero-subtitle">Your AI Genie is ready to grant your creative wishes</p>
+                        
+                        <div class="wish-maker">
+                            <div class="input-container">
+                                <input type="text" id="wish-input" class="wish-input" placeholder="What do you wish to create?" maxlength="200">
+                                <div class="input-sparkles"></div>
+                            </div>
+                            
+                            <div class="wish-buttons">
+                                <button class="btn btn--magical" data-type="image">
+                                    <span class="btn-icon">🖼️</span>
+                                    Generate Image
+                                </button>
+                                <button class="btn btn--magical" data-type="audio">
+                                    <span class="btn-icon">🎵</span>
+                                    Create Sound
+                                </button>
+                                <button class="btn btn--magical" data-type="text">
+                                    <span class="btn-icon">📜</span>
+                                    Write Story
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="hero-image">
+                        <img src="https://user-gen-media-assets.s3.amazonaws.com/gemini_images/27899b18-3d8c-4646-b84a-465d821b20e5.png" alt="Mystical AI Genie" class="genie-image">
+                    </div>
+                </div>
+
+                <!-- Active Wishes Panel -->
+                <div class="wishes-panel">
+                    <h3>My Active Wishes</h3>
+                    <div class="wishes-grid" id="active-wishes">
+                        <!-- Active wishes will be populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Completed Wishes Panel -->
+                <div class="wishes-panel">
+                    <h3>Recently Completed</h3>
+                    <div class="wishes-grid" id="completed-wishes">
+                        <!-- Completed wishes will be populated by JS -->
+                    </div>
                 </div>
             </section>
 
-            <section class="wishes-display">
-                <h2>Your Wishes</h2>
-                <div id="wishesContainer" class="wishes-grid">
-                    <!-- Wishes will be dynamically added here -->
+            <!-- My Wishes Section -->
+            <section id="wishes" class="section">
+                <div class="section-header">
+                    <h2>My Wishes Dashboard</h2>
+                    <p>Track and manage all your creative requests</p>
+                </div>
+                
+                <div class="dashboard-stats">
+                    <div class="stat-card">
+                        <div class="stat-number" id="total-wishes">0</div>
+                        <div class="stat-label">Total Wishes</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="completed-count">0</div>
+                        <div class="stat-label">Completed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number" id="favorites-count">0</div>
+                        <div class="stat-label">Favorites</div>
+                    </div>
+                </div>
+
+                <div class="all-wishes" id="all-wishes-container">
+                    <!-- All wishes will be populated by JS -->
                 </div>
             </section>
 
-            <section class="magic-particles" id="magicParticles">
-                <!-- Animated particles will be added here -->
-            </section>
-        </main>
+            <!-- Gallery Section -->
+            <section id="gallery" class="section">
+                <div class="section-header">
+                    <h2>Creative Gallery</h2>
+                    <p>Explore your magical creations</p>
+                </div>
 
-        <footer>
-            <p>Powered by AI Magic | <span class="version">v1.0.0</span></p>
-            <p class="mcp-status">MCP Integration: <span id="mcpStatus">Ready for Setup</span></p>
-        </footer>
+                <div class="gallery-filters">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="image">Images</button>
+                    <button class="filter-btn" data-filter="audio">Audio</button>
+                    <button class="filter-btn" data-filter="text">Stories</button>
+                    <button class="filter-btn" data-filter="favorited">Favorites</button>
+                </div>
+
+                <div class="gallery-grid" id="gallery-items">
+                    <!-- Gallery items will be populated by JS -->
+                </div>
+            </section>
+
+            <!-- Settings Section -->
+            <section id="settings" class="section">
+                <div class="section-header">
+                    <h2>Magic Settings</h2>
+                    <p>Customize your creative experience</p>
+                </div>
+
+                <div class="settings-content">
+                    <div class="settings-card">
+                        <h3>Generation Preferences</h3>
+                        <div class="form-group">
+                            <label class="form-label">Preferred Image Model</label>
+                            <select class="form-control" id="image-model">
+                                <option value="flux">Flux</option>
+                                <option value="dalle">DALL-E</option>
+                                <option value="stable-diffusion">Stable Diffusion</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Audio Quality</label>
+                            <select class="form-control" id="audio-quality">
+                                <option value="high">High Quality</option>
+                                <option value="medium">Medium Quality</option>
+                                <option value="fast">Fast Generation</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h3>Magical Interface</h3>
+                        <div class="form-group">
+                            <label class="form-label checkbox-label">
+                                <input type="checkbox" id="particles-enabled" checked> 
+                                <span class="checkbox-text">Enable Magic Particles</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label checkbox-label">
+                                <input type="checkbox" id="animations-enabled" checked> 
+                                <span class="checkbox-text">Enable Animations</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label checkbox-label">
+                                <input type="checkbox" id="sound-effects" checked> 
+                                <span class="checkbox-text">Sound Effects</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="settings-card features-card">
+                        <h3>Feature Overview</h3>
+                        <div class="features-chart-container">
+                            <img src="https://ppl-ai-code-interpreter-files.s3.amazonaws.com/web/direct-files/9e90e47af1af939a01c6c84229c88a3e/9f02285d-7437-407a-ba84-895039df7dde/a039fc97.png" alt="Gjinn Features Chart" class="features-chart">
+                        </div>
+                        <p class="chart-description">Comprehensive overview of Gjinn AI's capabilities across Core Features, Creative Management, and User Experience.</p>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Success Modal -->
+    <div id="success-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="success-animation">✨</div>
+            <h3>Wish Granted!</h3>
+            <p id="success-message">Your creative wish has been added to the queue</p>
+            <button class="btn btn--primary" onclick="closeSuccessModal()">Wonderful!</button>
+        </div>
     </div>
 
     <script src="app.js"></script>
