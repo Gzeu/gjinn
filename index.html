@@ -3,16 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Gjinn - Your AI Genie for creative image generation">
     <title>Gjinn - Your AI Genie of Imagination</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
-    <!-- Preload important resources -->
-    <link rel="preconnect" href="https://api.stability.ai">
-    <link rel="preconnect" href="https://images.unsplash.com">
-    <!-- Favicon -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧞‍♂️</text></svg>">
-    <meta name="theme-color" content="#4a148c">
 </head>
 <body>
     <!-- Magical background stars -->
@@ -125,70 +117,32 @@
 
                 <div class="all-wishes" id="all-wishes-container">
                     <!-- All wishes will be populated by JS -->
+                </div>
             </section>
 
             <!-- Gallery Section -->
             <section id="gallery" class="section">
                 <div class="section-header">
-                    <h2>Gallery of Creations</h2>
-                    <p>Explore the magic created by our community</p>
+                    <h2>Creative Gallery</h2>
+                    <p>Explore your magical creations</p>
                 </div>
-                <div class="gallery-controls">
-                    <div class="search-box">
-                        <i class="fas fa-search"></i>
-                        <input type="text" id="gallery-search" placeholder="Search creations..." autocomplete="off">
-                    </div>
-                    <div class="gallery-filters">
-                        <button class="btn btn-filter active" data-filter="all">
-                            <i class="fas fa-th-large"></i> All
-                        </button>
-                        <button class="btn btn-filter" data-filter="featured">
-                            <i class="fas fa-star"></i> Featured
-                        </button>
-                        <button class="btn btn-filter" data-filter="popular">
-                            <i class="fas fa-fire"></i> Popular
-                        </button>
-                        <button class="btn btn-filter" data-filter="recent">
-                            <i class="fas fa-clock"></i> Newest
-                        </button>
-                        <button class="btn btn-primary" id="upload-to-gallery">
-                            <i class="fas fa-upload"></i> Upload
-                        </button>
-                    </div>
+
+                <div class="gallery-filters">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="image">Images</button>
+                    <button class="filter-btn" data-filter="audio">Audio</button>
+                    <button class="filter-btn" data-filter="text">Stories</button>
+                    <button class="filter-btn" data-filter="favorited">Favorites</button>
                 </div>
-                
-                <div class="gallery-loading" id="gallery-loading">
-                    <div class="spinner"></div>
-                    <p>Loading magical creations...</p>
-                </div>
-                
-                <div id="gallery-grid" class="gallery-grid">
-                    <div class="grid-container">
-                        <div class="grid-row">
-                            <!-- Gallery items will be dynamically inserted here -->
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="gallery-empty" id="gallery-empty">
-                    <i class="fas fa-images"></i>
-                    <h3>No creations yet</h3>
-                    <p>Be the first to create something magical!</p>
-                    <button class="btn btn-primary" id="create-first">
-                        <i class="fas fa-magic"></i> Create Now
-                    </button>
-                </div>
-                
-                <div class="gallery-pagination" id="gallery-pagination">
-                    <button class="btn" id="load-more">
-                        <i class="fas fa-spinner fa-spin" id="load-more-spinner"></i>
-                        <span>Load More</span>
-                    </button>
+
+                <div class="gallery-grid" id="gallery-items">
+                    <!-- Gallery items will be populated by JS -->
                 </div>
             </section>
 
             <!-- Settings Section -->
             <section id="settings" class="section">
+                <div class="section-header">
                     <h2>Magic Settings</h2>
                     <p>Customize your creative experience</p>
                 </div>

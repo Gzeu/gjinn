@@ -4,21 +4,14 @@ class GjinnApp {
         this.wishes = [];
         this.galleryItems = [];
         this.currentWishId = 1;
-        this.pollingInterval = null;
-        this.pendingWishes = new Map();
-        this.API_BASE_URL = 'https://api.stability.ai/v1';
-        this.API_KEY = 'YOUR_STABILITY_AI_API_KEY'; // Replace with your actual API key
-        
         this.settings = {
-            imageModel: 'stable-diffusion-xl-1024-v1-0',
-            imageQuality: 'standard',
+            imageModel: 'flux',
+            audioQuality: 'high',
             particlesEnabled: true,
             animationsEnabled: true,
             soundEffects: true
         };
         
-        // Load saved data from localStorage
-        this.loadSavedData();
         this.init();
     }
 
@@ -31,36 +24,30 @@ class GjinnApp {
         this.renderAllSections();
     }
 
-    async loadSavedData() {
-        // Load saved data from localStorage
-        const savedWishes = localStorage.getItem('gjinnWishes');
-        const savedGallery = localStorage.getItem('gjinnGallery');
-        const savedSettings = localStorage.getItem('gjinnSettings');
-        
-        this.wishes = savedWishes ? JSON.parse(savedWishes) : [];
-        this.galleryItems = savedGallery ? JSON.parse(savedGallery) : [];
-        this.settings = savedSettings ? JSON.parse(savedSettings) : this.settings;
-        
-        // If no saved data, load sample data
-        if (this.wishes.length === 0) {
-            this.wishes = [
-                {
-                    id: this.generateId(),
-                    text: "A mystical forest with glowing mushrooms",
-                    type: "image",
-                    status: "completed",
-                    imageUrl: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=1024&h=1024&fit=crop",
-                    thumbnail: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=300&h=300&fit=crop",
-                    createdAt: new Date().toISOString(),
-                    favorited: true,
-                    downloads: 23
-                }
-            ];
-            this.saveData();
-        }
-        
-        // Start polling for pending wishes
-        this.startPolling();
+    loadSampleData() {
+        // Load sample wishes from the provided data
+        this.wishes = [
+            {
+                id: 1,
+                text: "A mystical forest with glowing mushrooms",
+                type: "image",
+                status: "completed",
+                thumbnail: "https://picsum.photos/150/150?random=1",
+                createdAt: "2025-10-01T15:30:00Z",
+                favorited: true,
+                downloads: 23
+            },
+            {
+                id: 2,
+                text: "Ambient ocean waves with whale songs",
+                type: "audio",
+                status: "completed",
+                duration: "2:15",
+                createdAt: "2025-10-01T14:20:00Z",
+                favorited: false,
+                downloads: 12
+            },
+            {
                 id: 3,
                 text: "A cyberpunk cityscape at night",
                 type: "image",
