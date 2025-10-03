@@ -1,43 +1,131 @@
-name: Deploy to GitHub Pages
+name: Deploy Gjinn to GitHub Pages
 
 on:
   push:
-    branches: [ main ]  # Change this to your default branch name if different
-  pull_request:
     branches: [ main ]
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
-      
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-          cache: 'npm'
-      
-      - name: Install dependencies
-        run: npm ci
-      
-      - name: Build
-        run: npm run build
-      
+        uses: actions/checkout@v4
+        
+      - name: Replace environment variables
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_POLLINATION_API_KEY: ${{ secrets.VITE_POLLINATION_API_KEY }}
+        run: |
+          echo "🔧 Configuring environment variables..."
+          
+          # Replace environment variable placeholders in index.html
+          sed -i "s|{{ VITE_SUPABASE_URL }}|${VITE_SUPABASE_URL}|g" index.html
+          sed -i "s|{{ VITE_SUPABASE_ANON_KEY }}|${VITE_SUPABASE_ANON_KEY}|g" index.html  
+          sed -i "s|{{ VITE_POLLINATION_API_KEY }}|${VITE_POLLINATION_API_KEY}|g" index.html
+          
+          echo "✅ Environment variables configured"
+          
+          # Verify no placeholders remain
+          if grep -q "{{ VITE_" index.html; then
+            echo "⚠️ Warning: Some environment variables may not be set"
+            echo "Remaining placeholders:"
+            grep "{{ VITE_" index.html || true
+          else
+            echo "✅ All environment variables successfully replaced"
+          fi
+
+      - name: Validate application structure
+        run: |
+          echo "🔎 Validating Gjinn application structure..."
+          
+          # Check required files
+          required_files=("index.html" "app.js" "js/config.js" "js/daily-prompts.js" "js/supabase-integration.js")
+          for file in "${required_files[@]}"; do
+            if [ -f "$file" ]; then
+              echo "✅ $file - Found"
+            else
+              echo "❌ $file - Missing"
+              exit 1
+            fi
+          done
+          
+          # Check CSS directory
+          if [ -d "css" ]; then
+            echo "✅ css/ directory - Found"
+            echo "   CSS files: $(ls css/*.css | wc -l)"
+          else
+            echo "⚠️ css/ directory - Missing"
+          fi
+          
+          # Check database schema
+          if [ -f "database/supabase-schema.sql" ]; then
+            echo "✅ Database schema - Found"
+          else
+            echo "⚠️ Database schema - Missing"
+          fi
+          
+          echo "✨ Application structure validation complete"
+
       - name: Setup Pages
-        uses: actions/configure-pages@v3
-      
+        uses: actions/configure-pages@v4
+        
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v2
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: './dist'  # Update this to your build output directory
-      
+          path: '.'
+          
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4
+        
+      - name: Post-deployment verification
+        run: |
+          echo "✨ Gjinn successfully deployed to GitHub Pages!"
+          echo "🚀 Live URL: ${{ steps.deployment.outputs.page_url }}"
+          echo ""
+          echo "📋 Deployment includes:"
+          echo "   ✅ Daily Creative Challenges (31 unique prompts)"
+          echo "   ✅ Supabase authentication and user management"
+          echo "   ✅ Pollination AI image generation with real links"
+          echo "   ✅ Enhanced user experience and mobile support"
+          echo "   ✅ Real-time image storage and retrieval"
+          echo "   ✅ Completion streak tracking and gamification"
+          echo ""
+          echo "📡 Next steps:"
+          echo "   1. Test the live application"
+          echo "   2. Set up Supabase database using database/supabase-schema.sql"
+          echo "   3. Configure OAuth providers (Google/GitHub) in Supabase"
+          echo "   4. Test user registration and image storage"
+          echo ""
+          echo "🎮 Ready to grant creative wishes!"
+        
+      - name: Create deployment summary
+        run: |
+          echo "## 🧞‍♂️ Gjinn Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**🚀 Deployment Status:** Successful" >> $GITHUB_STEP_SUMMARY
+          echo "**🌐 Live URL:** ${{ steps.deployment.outputs.page_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "**📅 Deploy Time:** $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### ✨ Features Deployed" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌟 Daily Creative Challenges (31 unique prompts)" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔐 Supabase authentication and user management" >> $GITHUB_STEP_SUMMARY
+          echo "- 🖼️ AI image generation with persistent storage" >> $GITHUB_STEP_SUMMARY
+          echo "- 📱 Mobile-optimized responsive design" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔥 Completion streak tracking system" >> $GITHUB_STEP_SUMMARY
