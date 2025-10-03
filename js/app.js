@@ -155,9 +155,12 @@ class GjinnApp {
     }
     
     showSection(sectionId) {
+        console.log(`Showing section: ${sectionId}`); // Debug log
+        
         // Hide all sections
         document.querySelectorAll('.section').forEach(section => {
             section.classList.remove('active');
+            console.log(`Hiding section: ${section.id}`); // Debug log
         });
         
         // Deactivate all nav links
@@ -169,6 +172,14 @@ class GjinnApp {
         const section = document.getElementById(sectionId);
         if (section) {
             section.classList.add('active');
+            console.log(`Showing section with ID: ${sectionId}`); // Debug log
+        } else {
+            console.error(`Section with ID ${sectionId} not found`); // Debug log
+            // If section not found, default to home
+            if (sectionId !== 'home') {
+                this.showSection('home');
+                return;
+            }
         }
         
         // Activate the clicked nav link
