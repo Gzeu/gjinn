@@ -1,27 +1,410 @@
 // Gjinn AI Genie Application
 class GjinnApp {
     constructor() {
-        this.wishes = [];
-        this.galleryItems = [];
-        this.currentWishId = 1;
-        this.settings = {
-            imageModel: 'flux',
-            audioQuality: 'high',
-            particlesEnabled: true,
-            animationsEnabled: true,
-            soundEffects: true
-        };
+        // Initialize Pollination
+        this.pollination = window.Pollinations;
         
+        // State management
+        this.state = {
+            wishes: [],
+            galleryItems: [],
+            currentWishId: 1,
+            isDarkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
+            isLoading: false,
+            error: null,
+            currentModel: CONFIG.POLLINATION.MODELS.STABLE_DIFFUSION,
+            settings: {
+                model: CONFIG.POLLINATION.MODELS.STABLE_DIFFUSION,
+                stylePreset: 'fantasy-art',
+                steps: 50,
+                width: 1024,
+                height: 1024,
+                seed: -1,
+                upscale: true,
+                particlesEnabled: true,
+                animationsEnabled: true,
+                soundEffects: true,
+                autoSave: true
+            },
+            user: {
+                isAuthenticated: false,
+                name: 'Guest',
+                userId: null,
+                favorites: new Set(),
+                requestCount: 0,
+                lastRequestTime: null
+            },
+            generationStatus: {
+                isGenerating: false,
+                progress: 0,
+                currentPrompt: '',
+                estimatedTimeRemaining: null
+            }
+        };
+
+        // Bind methods
+        this.init = this.init.bind(this);
+        this.toggleDarkMode = this.toggleDarkMode.bind(this);
+        this.handleError = this.handleError.bind(this);
+        
+        // Initialize the app
         this.init();
     }
 
-    init() {
-        this.loadSampleData();
-        this.setupEventListeners();
-        this.createMagicParticles();
-        this.startSparkleAnimation();
-        this.updateStats();
-        this.renderAllSections();
+    async init() {
+        try {
+            // Initialize UI
+            this.setupEventListeners();
+            this.createMagicParticles();
+            this.startSparkleAnimation();
+            
+            // Load user data and settings
+            await this.loadUserData();
+            
+            // Load gallery items
+            await this.loadGalleryItems();
+            
+            // Update UI
+            this.updateStats();
+            this.renderAllSections();
+            
+            // Initialize Pollination
+            await this.initializePollination();
+            
+            console.log('Gjinn initialized successfully');
+        } catch (error) {
+            console.error('Error initializing Gjinn:', error);
+            this.handleError(error, 'init');
+        }
+    }
+    
+    /**
+     * Initialize Pollination with API key if needed
+     */
+    async initializePollination() {
+        try {
+            // Check if we have a stored API key
+            const apiKey = localStorage.getItem('pollination_api_key');
+            if (apiKey) {
+                this.pollination.configure({ apiKey });
+            }
+            
+            // Check API status
+            const status = await this.pollination.status();
+            console.log('Pollination API status:', status);
+            
+            return true;
+        } catch (error) {
+            console.warn('Pollination initialization warning:', error.message);
+            // Continue without API key (using public endpoint with limitations)
+            return false;
+        }
+    }
+    
+    /**
+     * Generate an image using Pollination
+     * @param {string} prompt - The text prompt for image generation
+     * @param {object} options - Generation options
+     */
+    async generateImage(prompt, options = {}) {
+        if (!prompt || prompt.trim() === '') {
+            throw new Error('Prompt cannot be empty');
+        }
+        
+        // Check rate limiting
+        if (!this.canMakeRequest()) {
+            throw new Error('Rate limit exceeded. Please try again later.');
+        }
+        
+        try {
+            // Update UI state
+            this.setState({
+                generationStatus: {
+                    isGenerating: true,
+                    progress: 0,
+                    currentPrompt: prompt,
+                    estimatedTimeRemaining: 'Calculating...'
+                },
+                isLoading: true
+            });
+            
+            // Prepare generation options
+            const generationOptions = {
+                model: this.state.settings.model,
+                prompt: prompt,
+                ...CONFIG.POLLINATION.DEFAULT_SETTINGS,
+                ...options,
+                // Override with user settings
+                width: this.state.settings.width,
+                height: this.state.settings.height,
+                steps: this.state.settings.steps,
+                seed: this.state.settings.seed === -1 ? Math.floor(Math.random() * 1000000) : this.state.settings.seed
+            };
+            
+            // Track start time
+            const startTime = Date.now();
+            
+            // Start generation
+            const result = await this.pollination.generate(generationOptions, 
+                // Progress callback
+                (progress) => {
+                    this.updateGenerationProgress(progress, startTime);
+                }
+            );
+            
+            // Save the generated image
+            const imageData = {
+                id: `img_${Date.now()}`,
+                prompt: prompt,
+                imageUrl: result.url,
+                model: generationOptions.model,
+                timestamp: new Date().toISOString(),
+                settings: generationOptions,
+                userId: this.state.user.userId,
+                isPublic: this.state.user.isAuthenticated
+            };
+            
+            // Save to Supabase if authenticated
+            if (this.state.user.isAuthenticated) {
+                await this.saveImageToSupabase(imageData);
+            }
+            
+            // Add to gallery
+            this.addToGallery(imageData);
+            
+            // Update request count
+            this.updateRequestCount();
+            
+            return imageData;
+            
+        } catch (error) {
+            console.error('Error generating image:', error);
+            this.handleError(error, 'generateImage');
+            throw error;
+        } finally {
+            // Reset generation status
+            this.setState({
+                generationStatus: {
+                    isGenerating: false,
+                    progress: 0,
+                    currentPrompt: '',
+                    estimatedTimeRemaining: null
+                },
+                isLoading: false
+            });
+        }
+    }
+    
+    /**
+     * Update generation progress
+     * @param {number} progress - Progress percentage (0-100)
+     * @param {number} startTime - Timestamp when generation started
+     */
+    updateGenerationProgress(progress, startTime) {
+        const elapsed = (Date.now() - startTime) / 1000; // in seconds
+        const estimatedTotal = (elapsed * 100) / Math.max(progress, 1);
+        const remaining = Math.max(0, estimatedTotal - elapsed);
+        
+        this.setState({
+            generationStatus: {
+                ...this.state.generationStatus,
+                progress: Math.min(progress, 100),
+                estimatedTimeRemaining: this.formatTimeRemaining(remaining)
+            }
+        });
+    }
+    
+    /**
+     * Format time remaining in a human-readable format
+     */
+    formatTimeRemaining(seconds) {
+        if (isNaN(seconds) || seconds === 0) return 'Calculating...';
+        if (seconds < 60) return `${Math.ceil(seconds)} seconds`;
+        const minutes = Math.floor(seconds / 60);
+        return `${minutes} minute${minutes > 1 ? 's' : ''}`;
+    }
+    
+    /**
+     * Check if user can make a new request based on rate limiting
+     */
+    canMakeRequest() {
+        const { user } = this.state;
+        const now = Date.now();
+        
+        // Reset counter if it's been more than an hour since last request
+        if (user.lastRequestTime && (now - user.lastRequestTime) > 3600000) {
+            this.setState({
+                user: {
+                    ...user,
+                    requestCount: 0,
+                    lastRequestTime: now
+                }
+            });
+            return true;
+        }
+        
+        // Check if user has remaining requests
+        return user.requestCount < CONFIG.APP.MAX_REQUESTS_PER_HOUR;
+    }
+    
+    /**
+     * Update request count and last request time
+     */
+    updateRequestCount() {
+        const { user } = this.state;
+        this.setState({
+            user: {
+                ...user,
+                requestCount: (user.requestCount || 0) + 1,
+                lastRequestTime: Date.now()
+            }
+        });
+    }
+    
+    /**
+     * Save image data to Supabase
+     */
+    async saveImageToSupabase(imageData) {
+        try {
+            const { data, error } = await supabase
+                .from(CONFIG.SUPABASE.TABLES.IMAGES)
+                .insert([{
+                    user_id: this.state.user.userId,
+                    prompt: imageData.prompt,
+                    image_url: imageData.imageUrl,
+                    model: imageData.model,
+                    settings: imageData.settings,
+                    is_public: imageData.isPublic
+                }]);
+                
+            if (error) throw error;
+            
+            console.log('Image saved to Supabase:', data);
+            return data;
+        } catch (error) {
+            console.error('Error saving image to Supabase:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Load gallery items from Supabase or local storage
+     */
+    async loadGalleryItems() {
+        try {
+            let items = [];
+            
+            if (this.state.user.isAuthenticated) {
+                // Load from Supabase
+                const { data, error } = await supabase
+                    .from(CONFIG.SUPABASE.TABLES.IMAGES)
+                    .select('*')
+                    .or(`user_id.eq.${this.state.user.userId},is_public.eq.true`)
+                    .order('created_at', { ascending: false });
+                    
+                if (error) throw error;
+                
+                items = data || [];
+            } else {
+                // Load from local storage
+                const savedItems = localStorage.getItem('gjinn_gallery');
+                items = savedItems ? JSON.parse(savedItems) : [];
+            }
+            
+            this.setState({
+                galleryItems: items,
+                currentWishId: items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1
+            });
+            
+            return items;
+        } catch (error) {
+            console.error('Error loading gallery items:', error);
+            this.handleError(error, 'loadGalleryItems');
+            return [];
+        }
+    }
+    
+    /**
+     * Add an image to the gallery
+     */
+    addToGallery(imageData) {
+        const newGallery = [imageData, ...this.state.galleryItems];
+        
+        // Update state
+        this.setState({
+            galleryItems: newGallery,
+            currentWishId: this.state.currentWishId + 1
+        });
+        
+        // Persist to local storage if not authenticated
+        if (!this.state.user.isAuthenticated) {
+            localStorage.setItem('gjinn_gallery', JSON.stringify(newGallery));
+        }
+        
+        // Update UI
+        this.renderGallery();
+    }
+    
+    /**
+     * Load user data from Supabase or local storage
+     */
+    async loadUserData() {
+        try {
+            // Check for existing session
+            const { data: { session } } = await supabase.auth.getSession();
+            
+            if (session?.user) {
+                // User is authenticated
+                const userData = {
+                    isAuthenticated: true,
+                    userId: session.user.id,
+                    name: session.user.email?.split('@')[0] || 'User',
+                    email: session.user.email,
+                    favorites: new Set(),
+                    requestCount: 0,
+                    lastRequestTime: null
+                };
+                
+                // Load user preferences
+                const { data: preferences } = await supabase
+                    .from('user_preferences')
+                    .select('*')
+                    .eq('user_id', session.user.id)
+                    .single();
+                    
+                if (preferences) {
+                    // Apply user preferences
+                    this.setState({
+                        settings: {
+                            ...this.state.settings,
+                            ...preferences.settings
+                        },
+                        isDarkMode: preferences.dark_mode || false
+                    });
+                }
+                
+                this.setState({ user: userData });
+                return userData;
+            } else {
+                // Not authenticated, use local storage
+                const savedData = localStorage.getItem('gjinn_user');
+                if (savedData) {
+                    const userData = JSON.parse(savedData);
+                    this.setState({
+                        user: {
+                            ...userData,
+                            favorites: new Set(userData.favorites || [])
+                        }
+                    });
+                    return userData;
+                }
+                return null;
+            }
+        } catch (error) {
+            console.error('Error loading user data:', error);
+            this.handleError(error, 'loadUserData');
+            return null;
+        }
     }
 
     loadSampleData() {
