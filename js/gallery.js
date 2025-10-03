@@ -97,85 +97,233 @@ class Gallery {
         card.className = 'gallery-card';
         card.dataset.id = image.id;
         
+        // Image container
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'gallery-card-image-container';
+        
         // Image
         const img = document.createElement('img');
         img.src = image.image_url;
         img.alt = image.prompt || 'Generated image';
         img.loading = 'lazy';
+        img.className = 'gallery-card-image';
         
-        // Overlay with prompt
+        // Overlay with prompt and actions
         const overlay = document.createElement('div');
         overlay.className = 'gallery-card-overlay';
         
+        // Prompt text
         const prompt = document.createElement('div');
         prompt.className = 'gallery-card-prompt';
         prompt.textContent = image.prompt || 'No prompt provided';
+        prompt.title = image.prompt || ''; // Show full prompt on hover
         
+        // Actions container
         const actions = document.createElement('div');
         actions.className = 'gallery-card-actions';
         
         // Download button
         const downloadBtn = document.createElement('button');
         downloadBtn.className = 'btn-icon';
+        downloadBtn.setAttribute('aria-label', 'Download image');
         downloadBtn.title = 'Download';
-        downloadBtn.innerHTML = '<i class="fas fa-download"></i>';
-        downloadBtn.onclick = (e) => this.downloadImage(image);
+        downloadBtn.innerHTML = '<i class="fas fa-download" aria-hidden="true"></i>';
+        downloadBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.downloadImage(image);
+        });
         
         // Delete button
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'btn-icon';
+        deleteBtn.setAttribute('aria-label', 'Delete image');
         deleteBtn.title = 'Delete';
-        deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
-        deleteBtn.onclick = (e) => this.deleteImage(image.id, card);
+        deleteBtn.innerHTML = '<i class="fas fa-trash" aria-hidden="true"></i>';
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.deleteImage(image.id, card);
+        });
         
+        // Add buttons to actions
         actions.appendChild(downloadBtn);
         actions.appendChild(deleteBtn);
         
+        // Add elements to overlay
         overlay.appendChild(prompt);
         overlay.appendChild(actions);
         
-        card.appendChild(img);
+        // Add image to container
+        imgContainer.appendChild(img);
+        
+        // Add all to card
+        card.appendChild(imgContainer);
         card.appendChild(overlay);
+        
+        // Add click handler for the card (optional: open larger view)
+        card.addEventListener('click', (e) => {
+            // Only trigger if clicking on the card itself, not buttons
+            if (e.target === card || e.target === img) {
+                this.viewImage(image);
+            }
+        });
         
         return card;
     }
 
-    async downloadImage(image) {
+    async downloadImage(image, event) {
         try {
-            const response = await fetch(image.image_url);
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
+            // Show loading state
+            const button = event ? event.currentTarget : null;
+            const originalHTML = button ? button.innerHTML : '';
             
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `gjinn-${image.id}.png`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            a.remove();
+            if (button) {
+                button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                button.disabled = true;
+            }
             
-            this.showToast('Download started', 'success');
+            // Create a new image element to handle CORS
+            const img = new Image();
+            img.crossOrigin = 'Anonymous';
+            
+            // Load the image
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = () => reject(new Error('Failed to load image'));
+                img.src = image.image_url + '?t=' + new Date().getTime(); // Cache buster
+            });
+            
+            // Create canvas to handle the image
+            const canvas = document.createElement('canvas');
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            
+            // Convert to blob and download
+            return new Promise((resolve, reject) => {
+                canvas.toBlob((blob) => {
+                    try {
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `gjinn-${image.id || Date.now()}.png`;
+                        document.body.appendChild(a);
+                        a.click();
+                        
+                        // Clean up
+                        setTimeout(() => {
+                            document.body.removeChild(a);
+                            window.URL.revokeObjectURL(url);
+                            if (button) {
+                                button.innerHTML = originalHTML;
+                                button.disabled = false;
+                            }
+                            this.showToast('Download started', 'success');
+                            resolve();
+                        }, 100);
+                    } catch (err) {
+                        console.error('Error in download process:', err);
+                        reject(err);
+                    }
+                }, 'image/png');
+            });
+            
         } catch (error) {
             console.error('Error downloading image:', error);
             this.showToast('Failed to download image', 'error');
+            
+            // Reset button state on error
+            if (event && event.currentTarget) {
+                event.currentTarget.innerHTML = '<i class="fas fa-download"></i>';
+                event.currentTarget.disabled = false;
+            }
+            throw error;
         }
     }
 
     async deleteImage(imageId, cardElement) {
-        if (!confirm('Are you sure you want to delete this image?')) return;
-        
         try {
+            // Show confirmation dialog with custom styling
+            const confirmed = await new Promise((resolve) => {
+                const modal = document.createElement('div');
+                modal.className = 'confirm-modal';
+                modal.innerHTML = `
+                    <div class="confirm-dialog">
+                        <h3>Delete Image</h3>
+                        <p>Are you sure you want to delete this image? This action cannot be undone.</p>
+                        <div class="confirm-buttons">
+                            <button class="btn btn-secondary" id="confirm-cancel">Cancel</button>
+                            <button class="btn btn-danger" id="confirm-delete">Delete</button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+                
+                // Handle button clicks
+                const cancelBtn = modal.querySelector('#confirm-cancel');
+                const deleteBtn = modal.querySelector('#confirm-delete');
+                
+                const cleanup = () => {
+                    cancelBtn.removeEventListener('click', onCancel);
+                    deleteBtn.removeEventListener('click', onDelete);
+                    modal.removeEventListener('click', onClickOutside);
+                    if (document.body.contains(modal)) {
+                        document.body.removeChild(modal);
+                    }
+                };
+                
+                const onCancel = () => {
+                    cleanup();
+                    resolve(false);
+                };
+                
+                const onDelete = () => {
+                    cleanup();
+                    resolve(true);
+                };
+                
+                const onClickOutside = (e) => {
+                    if (e.target === modal) {
+                        cleanup();
+                        resolve(false);
+                    }
+                };
+                
+                cancelBtn.addEventListener('click', onCancel);
+                deleteBtn.addEventListener('click', onDelete);
+                modal.addEventListener('click', onClickOutside);
+            });
+            
+            if (!confirmed) return;
+            
             const { data: { user } } = await supabase.auth.getUser();
+            if (!user) {
+                throw new Error('User not authenticated');
+            }
+            
             await window.imageService.deleteGeneration(user.id, imageId);
             
-            // Remove from UI
-            cardElement.classList.add('removing');
-            setTimeout(() => cardElement.remove(), 300);
+            // Animate removal
+            cardElement.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+            cardElement.style.opacity = '0';
+            cardElement.style.transform = 'scale(0.9)';
             
-            this.showToast('Image deleted', 'success');
+            // Remove from DOM after animation
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    if (cardElement.parentNode) {
+                        cardElement.remove();
+                    }
+                    this.showToast('Image deleted', 'success');
+                    resolve();
+                }, 300);
+            });
+            
         } catch (error) {
             console.error('Error deleting image:', error);
             this.showToast('Failed to delete image', 'error');
+            throw error;
         }
     }
 
