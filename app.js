@@ -1,8 +1,20 @@
 // Gjinn AI Genie Application
+// Import daily prompts if available
+let DailyPrompts;
+if (typeof module !== 'undefined' && module.exports) {
+    const { DailyPrompts: DP } = require('./js/daily-prompts.js');
+    DailyPrompts = DP;
+} else {
+    // Browser environment - will be loaded via script tag
+}
+
 class GjinnApp {
     constructor() {
         // Initialize Pollination
         this.pollination = window.Pollinations;
+        
+        // Initialize daily prompts system
+        this.initializeDailyPrompts();
         
         // State management
         this.state = {
@@ -12,9 +24,9 @@ class GjinnApp {
             isDarkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
             isLoading: false,
             error: null,
-            currentModel: CONFIG.POLLINATION.MODELS.STABLE_DIFFUSION,
+            currentModel: CONFIG?.POLLINATION?.MODELS?.STABLE_DIFFUSION || 'flux',
             settings: {
-                model: CONFIG.POLLINATION.MODELS.STABLE_DIFFUSION,
+                model: CONFIG?.POLLINATION?.MODELS?.STABLE_DIFFUSION || 'flux',
                 stylePreset: 'fantasy-art',
                 steps: 50,
                 width: 1024,
@@ -24,7 +36,8 @@ class GjinnApp {
                 particlesEnabled: true,
                 animationsEnabled: true,
                 soundEffects: true,
-                autoSave: true
+                autoSave: true,
+                showDailyPrompts: true
             },
             user: {
                 isAuthenticated: false,
@@ -32,14 +45,16 @@ class GjinnApp {
                 userId: null,
                 favorites: new Set(),
                 requestCount: 0,
-                lastRequestTime: null
+                lastRequestTime: null,
+                completionStreak: 0
             },
             generationStatus: {
                 isGenerating: false,
                 progress: 0,
                 currentPrompt: '',
                 estimatedTimeRemaining: null
-            }
+            },
+            dailyPrompt: null
         };
 
         // Bind methods
@@ -51,6 +66,30 @@ class GjinnApp {
         this.init();
     }
 
+    initializeDailyPrompts() {
+        try {
+            // Try to initialize from global if loaded
+            if (window.DailyPrompts) {
+                this.dailyPrompts = new window.DailyPrompts();
+            } else {
+                // Fallback: create a simple daily prompts system
+                this.dailyPrompts = {
+                    prompts: [
+                        { id: 1, type: 'image', text: 'A mystical forest with glowing mushrooms at twilight', category: 'fantasy' },
+                        { id: 2, type: 'image', text: 'Floating islands connected by bridges of pure light', category: 'fantasy' },
+                        { id: 3, type: 'audio', text: 'The sound of wind chimes in a magical garden', category: 'ambient' }
+                    ],
+                    getTodaysPrompt() {
+                        const dayIndex = new Date().getDate() % this.prompts.length;
+                        return { ...this.prompts[dayIndex], isToday: true, date: new Date().toDateString() };
+                    }
+                };
+            }
+        } catch (error) {
+            console.warn('Could not initialize daily prompts:', error);
+        }
+    }
+
     async init() {
         try {
             // Initialize UI
@@ -58,11 +97,17 @@ class GjinnApp {
             this.createMagicParticles();
             this.startSparkleAnimation();
             
+            // Load sample data initially
+            this.loadSampleData();
+            
             // Load user data and settings
             await this.loadUserData();
             
             // Load gallery items
             await this.loadGalleryItems();
+            
+            // Initialize daily prompt
+            this.initializeTodaysPrompt();
             
             // Update UI
             this.updateStats();
@@ -77,12 +122,319 @@ class GjinnApp {
             this.handleError(error, 'init');
         }
     }
+
+    initializeTodaysPrompt() {
+        if (this.dailyPrompts) {
+            try {
+                const todaysPrompt = this.dailyPrompts.getTodaysPrompt();
+                this.setState({ dailyPrompt: todaysPrompt });
+                this.renderDailyPrompt();
+            } catch (error) {
+                console.error('Error loading today\'s prompt:', error);
+            }
+        }
+    }
+
+    renderDailyPrompt() {
+        const { dailyPrompt, settings } = this.state;
+        
+        if (!dailyPrompt || !settings.showDailyPrompts) return;
+        
+        // Check if daily prompt container exists, if not create it
+        let container = document.getElementById('daily-prompt-container');
+        if (!container) {
+            container = this.createDailyPromptContainer();
+        }
+        
+        const isCompleted = this.dailyPrompts.hasCompletedTodaysPrompt ? 
+            this.dailyPrompts.hasCompletedTodaysPrompt() : false;
+        
+        const streak = this.dailyPrompts.getCompletionStreak ? 
+            this.dailyPrompts.getCompletionStreak() : 0;
+        
+        const typeIcons = {
+            image: '🖼️',
+            audio: '🎵',
+            text: '📜'
+        };
+        
+        container.innerHTML = `
+            <div class="daily-prompt-card ${isCompleted ? 'completed' : ''}">
+                <div class="daily-prompt-header">
+                    <div class="prompt-badge">
+                        <span class="prompt-icon">🌟</span>
+                        <span>Daily Challenge</span>
+                    </div>
+                    ${streak > 0 ? `<div class="streak-badge">${streak}🔥</div>` : ''}
+                </div>
+                <div class="prompt-content">
+                    <div class="prompt-type">
+                        ${typeIcons[dailyPrompt.type]} ${dailyPrompt.type.charAt(0).toUpperCase() + dailyPrompt.type.slice(1)}
+                    </div>
+                    <h3 class="prompt-text">${dailyPrompt.text}</h3>
+                    ${dailyPrompt.category ? `<span class="prompt-category">${dailyPrompt.category}</span>` : ''}
+                </div>
+                <div class="prompt-actions">
+                    ${isCompleted ? 
+                        '<span class="completed-badge">✅ Completed Today!</span>' :
+                        `<button class="btn btn--daily-prompt" onclick="app.useDailyPrompt()">
+                            <span>Accept Challenge</span>
+                            <span class="btn-sparkle">✨</span>
+                        </button>`
+                    }
+                </div>
+            </div>
+        `;
+    }
+    
+    createDailyPromptContainer() {
+        const heroContent = document.querySelector('.hero-content');
+        if (!heroContent) return null;
+        
+        const container = document.createElement('div');
+        container.id = 'daily-prompt-container';
+        container.className = 'daily-prompt-container';
+        
+        // Insert after hero title/subtitle but before wish maker
+        const wishMaker = heroContent.querySelector('.wish-maker');
+        if (wishMaker) {
+            heroContent.insertBefore(container, wishMaker);
+        } else {
+            heroContent.appendChild(container);
+        }
+        
+        // Add styles for daily prompt
+        this.addDailyPromptStyles();
+        
+        return container;
+    }
+    
+    addDailyPromptStyles() {
+        const style = document.createElement('style');
+        style.textContent = `
+            .daily-prompt-container {
+                margin: 2rem 0;
+            }
+            
+            .daily-prompt-card {
+                background: linear-gradient(135deg, rgba(116, 58, 213, 0.15), rgba(159, 122, 234, 0.1));
+                border: 2px solid rgba(116, 58, 213, 0.3);
+                border-radius: 16px;
+                padding: 1.5rem;
+                position: relative;
+                overflow: hidden;
+                backdrop-filter: blur(10px);
+                transition: all 0.3s ease;
+            }
+            
+            .daily-prompt-card:hover {
+                border-color: rgba(116, 58, 213, 0.5);
+                box-shadow: 0 8px 32px rgba(116, 58, 213, 0.2);
+                transform: translateY(-2px);
+            }
+            
+            .daily-prompt-card.completed {
+                border-color: rgba(34, 197, 94, 0.4);
+                background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(34, 197, 94, 0.1));
+            }
+            
+            .daily-prompt-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 1rem;
+            }
+            
+            .prompt-badge {
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                background: rgba(116, 58, 213, 0.2);
+                padding: 0.25rem 0.75rem;
+                border-radius: 20px;
+                font-size: 0.875rem;
+                font-weight: 500;
+                color: #9F7AEA;
+            }
+            
+            .streak-badge {
+                background: linear-gradient(45deg, #FF6B35, #FF8E53);
+                color: white;
+                padding: 0.25rem 0.75rem;
+                border-radius: 20px;
+                font-weight: 600;
+                font-size: 0.875rem;
+            }
+            
+            .prompt-content {
+                margin-bottom: 1.5rem;
+            }
+            
+            .prompt-type {
+                font-size: 0.875rem;
+                color: #9F7AEA;
+                margin-bottom: 0.5rem;
+                font-weight: 500;
+            }
+            
+            .prompt-text {
+                font-size: 1.125rem;
+                font-weight: 600;
+                color: var(--text-primary, #2D3748);
+                margin: 0 0 0.5rem 0;
+                line-height: 1.4;
+            }
+            
+            .prompt-category {
+                display: inline-block;
+                background: rgba(116, 58, 213, 0.1);
+                color: #9F7AEA;
+                padding: 0.25rem 0.5rem;
+                border-radius: 12px;
+                font-size: 0.75rem;
+                font-weight: 500;
+                text-transform: capitalize;
+            }
+            
+            .prompt-actions {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            
+            .btn--daily-prompt {
+                background: linear-gradient(135deg, #9F7AEA, #B794F6);
+                color: white;
+                border: none;
+                padding: 0.75rem 1.5rem;
+                border-radius: 12px;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+                transition: all 0.3s ease;
+                cursor: pointer;
+            }
+            
+            .btn--daily-prompt:hover {
+                background: linear-gradient(135deg, #8B5CF6, #A78BFA);
+                transform: translateY(-1px);
+                box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
+            }
+            
+            .completed-badge {
+                color: #059669;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                gap: 0.5rem;
+            }
+            
+            .btn-sparkle {
+                animation: sparkle-rotate 2s ease-in-out infinite;
+            }
+            
+            @keyframes sparkle-rotate {
+                0%, 100% { transform: rotate(0deg); }
+                50% { transform: rotate(180deg); }
+            }
+            
+            @media (prefers-color-scheme: dark) {
+                .prompt-text {
+                    color: #F7FAFC;
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    useDailyPrompt() {
+        const { dailyPrompt } = this.state;
+        if (!dailyPrompt) return;
+        
+        // Set the prompt text in the input field
+        const wishInput = document.getElementById('wish-input');
+        if (wishInput) {
+            wishInput.value = dailyPrompt.text;
+            wishInput.focus();
+        }
+        
+        // Show notification
+        this.showNotification('Daily prompt loaded! Ready to create? ✨', 'success');
+        
+        // Highlight the create buttons
+        this.highlightCreateButtons(dailyPrompt.type);
+    }
+    
+    highlightCreateButtons(preferredType) {
+        // Remove existing highlights
+        document.querySelectorAll('.btn--magical').forEach(btn => {
+            btn.classList.remove('highlighted', 'preferred');
+        });
+        
+        // Highlight all buttons briefly
+        document.querySelectorAll('.btn--magical').forEach(btn => {
+            btn.classList.add('highlighted');
+        });
+        
+        // Mark the preferred type
+        const preferredBtn = document.querySelector(`[data-type="${preferredType}"]`);
+        if (preferredBtn) {
+            preferredBtn.classList.add('preferred');
+        }
+        
+        // Remove highlights after animation
+        setTimeout(() => {
+            document.querySelectorAll('.btn--magical').forEach(btn => {
+                btn.classList.remove('highlighted');
+            });
+        }, 2000);
+        
+        // Add button highlight styles if not already added
+        this.addButtonHighlightStyles();
+    }
+    
+    addButtonHighlightStyles() {
+        if (document.getElementById('button-highlight-styles')) return;
+        
+        const style = document.createElement('style');
+        style.id = 'button-highlight-styles';
+        style.textContent = `
+            .btn--magical.highlighted {
+                animation: pulse-glow 0.6s ease-in-out;
+                box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+            }
+            
+            .btn--magical.preferred {
+                background: linear-gradient(135deg, #9F7AEA, #B794F6) !important;
+                box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
+            }
+            
+            @keyframes pulse-glow {
+                0%, 100% { 
+                    transform: scale(1); 
+                    box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
+                }
+                50% { 
+                    transform: scale(1.02); 
+                    box-shadow: 0 0 30px rgba(139, 92, 246, 0.7);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    }
     
     /**
      * Initialize Pollination with API key if needed
      */
     async initializePollination() {
         try {
+            // Check if Pollination is available
+            if (!this.pollination) {
+                console.warn('Pollination not available');
+                return false;
+            }
+            
             // Check if we have a stored API key
             const apiKey = localStorage.getItem('pollination_api_key');
             if (apiKey) {
@@ -132,7 +484,6 @@ class GjinnApp {
             const generationOptions = {
                 model: this.state.settings.model,
                 prompt: prompt,
-                ...CONFIG.POLLINATION.DEFAULT_SETTINGS,
                 ...options,
                 // Override with user settings
                 width: this.state.settings.width,
@@ -163,11 +514,6 @@ class GjinnApp {
                 userId: this.state.user.userId,
                 isPublic: this.state.user.isAuthenticated
             };
-            
-            // Save to Supabase if authenticated
-            if (this.state.user.isAuthenticated) {
-                await this.saveImageToSupabase(imageData);
-            }
             
             // Add to gallery
             this.addToGallery(imageData);
@@ -243,8 +589,9 @@ class GjinnApp {
             return true;
         }
         
-        // Check if user has remaining requests
-        return user.requestCount < CONFIG.APP.MAX_REQUESTS_PER_HOUR;
+        // Check if user has remaining requests (default to 10 if CONFIG not available)
+        const maxRequests = CONFIG?.APP?.MAX_REQUESTS_PER_HOUR || 10;
+        return user.requestCount < maxRequests;
     }
     
     /**
@@ -262,58 +609,17 @@ class GjinnApp {
     }
     
     /**
-     * Save image data to Supabase
-     */
-    async saveImageToSupabase(imageData) {
-        try {
-            const { data, error } = await supabase
-                .from(CONFIG.SUPABASE.TABLES.IMAGES)
-                .insert([{
-                    user_id: this.state.user.userId,
-                    prompt: imageData.prompt,
-                    image_url: imageData.imageUrl,
-                    model: imageData.model,
-                    settings: imageData.settings,
-                    is_public: imageData.isPublic
-                }]);
-                
-            if (error) throw error;
-            
-            console.log('Image saved to Supabase:', data);
-            return data;
-        } catch (error) {
-            console.error('Error saving image to Supabase:', error);
-            throw error;
-        }
-    }
-    
-    /**
-     * Load gallery items from Supabase or local storage
+     * Load gallery items from local storage
      */
     async loadGalleryItems() {
         try {
-            let items = [];
-            
-            if (this.state.user.isAuthenticated) {
-                // Load from Supabase
-                const { data, error } = await supabase
-                    .from(CONFIG.SUPABASE.TABLES.IMAGES)
-                    .select('*')
-                    .or(`user_id.eq.${this.state.user.userId},is_public.eq.true`)
-                    .order('created_at', { ascending: false });
-                    
-                if (error) throw error;
-                
-                items = data || [];
-            } else {
-                // Load from local storage
-                const savedItems = localStorage.getItem('gjinn_gallery');
-                items = savedItems ? JSON.parse(savedItems) : [];
-            }
+            // Load from local storage
+            const savedItems = localStorage.getItem('gjinn_gallery');
+            const items = savedItems ? JSON.parse(savedItems) : [];
             
             this.setState({
                 galleryItems: items,
-                currentWishId: items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1
+                currentWishId: items.length > 0 ? Math.max(...items.map(i => i.id || 0)) + 1 : 1
             });
             
             return items;
@@ -336,75 +642,72 @@ class GjinnApp {
             currentWishId: this.state.currentWishId + 1
         });
         
-        // Persist to local storage if not authenticated
-        if (!this.state.user.isAuthenticated) {
-            localStorage.setItem('gjinn_gallery', JSON.stringify(newGallery));
-        }
+        // Persist to local storage
+        localStorage.setItem('gjinn_gallery', JSON.stringify(newGallery));
         
         // Update UI
         this.renderGallery();
     }
     
     /**
-     * Load user data from Supabase or local storage
+     * Load user data from local storage
      */
     async loadUserData() {
         try {
-            // Check for existing session
-            const { data: { session } } = await supabase.auth.getSession();
-            
-            if (session?.user) {
-                // User is authenticated
-                const userData = {
-                    isAuthenticated: true,
-                    userId: session.user.id,
-                    name: session.user.email?.split('@')[0] || 'User',
-                    email: session.user.email,
-                    favorites: new Set(),
-                    requestCount: 0,
-                    lastRequestTime: null
-                };
-                
-                // Load user preferences
-                const { data: preferences } = await supabase
-                    .from('user_preferences')
-                    .select('*')
-                    .eq('user_id', session.user.id)
-                    .single();
-                    
-                if (preferences) {
-                    // Apply user preferences
-                    this.setState({
-                        settings: {
-                            ...this.state.settings,
-                            ...preferences.settings
-                        },
-                        isDarkMode: preferences.dark_mode || false
-                    });
-                }
-                
-                this.setState({ user: userData });
+            // Load from local storage
+            const savedData = localStorage.getItem('gjinn_user');
+            if (savedData) {
+                const userData = JSON.parse(savedData);
+                this.setState({
+                    user: {
+                        ...this.state.user,
+                        ...userData,
+                        favorites: new Set(userData.favorites || [])
+                    }
+                });
                 return userData;
-            } else {
-                // Not authenticated, use local storage
-                const savedData = localStorage.getItem('gjinn_user');
-                if (savedData) {
-                    const userData = JSON.parse(savedData);
-                    this.setState({
-                        user: {
-                            ...userData,
-                            favorites: new Set(userData.favorites || [])
-                        }
-                    });
-                    return userData;
-                }
-                return null;
             }
+            return null;
         } catch (error) {
             console.error('Error loading user data:', error);
             this.handleError(error, 'loadUserData');
             return null;
         }
+    }
+    
+    /**
+     * Save user data to local storage
+     */
+    saveUserData() {
+        try {
+            const userData = {
+                ...this.state.user,
+                favorites: Array.from(this.state.user.favorites)
+            };
+            localStorage.setItem('gjinn_user', JSON.stringify(userData));
+        } catch (error) {
+            console.error('Error saving user data:', error);
+        }
+    }
+    
+    /**
+     * Update state and trigger re-renders
+     */
+    setState(newState) {
+        this.state = { ...this.state, ...newState };
+        // Save user data when state changes
+        if (newState.user) {
+            this.saveUserData();
+        }
+    }
+    
+    /**
+     * Handle errors gracefully
+     */
+    handleError(error, context) {
+        console.error(`Error in ${context}:`, error);
+        this.setState({ error: error.message });
+        this.showNotification(`An error occurred: ${error.message}`, 'error');
     }
 
     loadSampleData() {
@@ -533,9 +836,11 @@ class GjinnApp {
 
         // Input sparkles effect
         const wishInput = document.getElementById('wish-input');
-        wishInput.addEventListener('focus', () => this.startInputSparkles());
-        wishInput.addEventListener('blur', () => this.stopInputSparkles());
-        wishInput.addEventListener('input', () => this.updateInputSparkles());
+        if (wishInput) {
+            wishInput.addEventListener('focus', () => this.startInputSparkles());
+            wishInput.addEventListener('blur', () => this.stopInputSparkles());
+            wishInput.addEventListener('input', () => this.updateInputSparkles());
+        }
 
         // Gallery filters
         document.querySelectorAll('.filter-btn').forEach(btn => {
@@ -547,32 +852,47 @@ class GjinnApp {
         });
 
         // Settings
-        document.getElementById('image-model').addEventListener('change', (e) => {
-            this.settings.imageModel = e.target.value;
-            this.saveSettings();
-        });
+        const imageModel = document.getElementById('image-model');
+        if (imageModel) {
+            imageModel.addEventListener('change', (e) => {
+                this.state.settings.imageModel = e.target.value;
+                this.saveSettings();
+            });
+        }
 
-        document.getElementById('audio-quality').addEventListener('change', (e) => {
-            this.settings.audioQuality = e.target.value;
-            this.saveSettings();
-        });
+        const audioQuality = document.getElementById('audio-quality');
+        if (audioQuality) {
+            audioQuality.addEventListener('change', (e) => {
+                this.state.settings.audioQuality = e.target.value;
+                this.saveSettings();
+            });
+        }
 
-        document.getElementById('particles-enabled').addEventListener('change', (e) => {
-            this.settings.particlesEnabled = e.target.checked;
-            this.toggleParticles();
-            this.saveSettings();
-        });
+        const particlesEnabled = document.getElementById('particles-enabled');
+        if (particlesEnabled) {
+            particlesEnabled.addEventListener('change', (e) => {
+                this.state.settings.particlesEnabled = e.target.checked;
+                this.toggleParticles();
+                this.saveSettings();
+            });
+        }
 
-        document.getElementById('animations-enabled').addEventListener('change', (e) => {
-            this.settings.animationsEnabled = e.target.checked;
-            this.toggleAnimations();
-            this.saveSettings();
-        });
+        const animationsEnabled = document.getElementById('animations-enabled');
+        if (animationsEnabled) {
+            animationsEnabled.addEventListener('change', (e) => {
+                this.state.settings.animationsEnabled = e.target.checked;
+                this.toggleAnimations();
+                this.saveSettings();
+            });
+        }
 
         // Modal close
-        document.querySelector('.modal-backdrop')?.addEventListener('click', () => {
-            this.closeSuccessModal();
-        });
+        const modalBackdrop = document.querySelector('.modal-backdrop');
+        if (modalBackdrop) {
+            modalBackdrop.addEventListener('click', () => {
+                this.closeSuccessModal();
+            });
+        }
     }
 
     showSection(sectionName) {
@@ -582,13 +902,19 @@ class GjinnApp {
         });
 
         // Show target section
-        document.getElementById(sectionName).classList.add('active');
+        const targetSection = document.getElementById(sectionName);
+        if (targetSection) {
+            targetSection.classList.add('active');
+        }
 
         // Update navigation
         document.querySelectorAll('.nav-link').forEach(link => {
             link.classList.remove('active');
         });
-        document.querySelector(`[data-section="${sectionName}"]`).classList.add('active');
+        const targetNav = document.querySelector(`[data-section="${sectionName}"]`);
+        if (targetNav) {
+            targetNav.classList.add('active');
+        }
 
         // Render section-specific content
         this.renderSection(sectionName);
@@ -599,6 +925,7 @@ class GjinnApp {
             case 'home':
                 this.renderActiveWishes();
                 this.renderCompletedWishes();
+                this.renderDailyPrompt();
                 break;
             case 'wishes':
                 this.renderAllWishes();
@@ -614,15 +941,16 @@ class GjinnApp {
         this.renderCompletedWishes();
         this.renderAllWishes();
         this.renderGallery();
+        this.renderDailyPrompt();
     }
 
     createWish(type) {
         const input = document.getElementById('wish-input');
-        const text = input.value.trim();
+        const text = input ? input.value.trim() : '';
 
         if (!text) {
             this.showNotification('Please enter your creative wish first!', 'warning');
-            input.focus();
+            if (input) input.focus();
             return;
         }
 
@@ -638,7 +966,17 @@ class GjinnApp {
         };
 
         this.wishes.unshift(wish);
-        input.value = '';
+        if (input) input.value = '';
+        
+        // Check if this matches today's prompt and mark as completed
+        if (this.state.dailyPrompt && text === this.state.dailyPrompt.text) {
+            if (this.dailyPrompts.markTodaysPromptCompleted) {
+                this.dailyPrompts.markTodaysPromptCompleted(wish.id);
+                this.showNotification('🎉 Daily challenge completed! Keep up the streak!', 'success');
+                // Update the daily prompt display
+                setTimeout(() => this.renderDailyPrompt(), 500);
+            }
+        }
         
         this.showSuccessModal(`Your ${type} creation wish has been granted!`);
         this.simulateWishProcessing(wish);
@@ -690,6 +1028,8 @@ class GjinnApp {
 
     renderActiveWishes() {
         const container = document.getElementById('active-wishes');
+        if (!container) return;
+        
         const activeWishes = this.wishes.filter(w => w.status === 'queued' || w.status === 'processing');
         
         if (activeWishes.length === 0) {
@@ -702,6 +1042,8 @@ class GjinnApp {
 
     renderCompletedWishes() {
         const container = document.getElementById('completed-wishes');
+        if (!container) return;
+        
         const completedWishes = this.wishes.filter(w => w.status === 'completed').slice(0, 6);
         
         container.innerHTML = completedWishes.map(wish => this.createWishCard(wish)).join('');
@@ -709,6 +1051,8 @@ class GjinnApp {
 
     renderAllWishes() {
         const container = document.getElementById('all-wishes-container');
+        if (!container) return;
+        
         container.innerHTML = this.wishes.map(wish => this.createWishCard(wish)).join('');
     }
 
@@ -771,6 +1115,8 @@ class GjinnApp {
 
     renderGallery(filter = 'all') {
         const container = document.getElementById('gallery-items');
+        if (!container) return;
+        
         let items = [...this.galleryItems];
 
         // Add completed wishes to gallery
@@ -873,15 +1219,20 @@ class GjinnApp {
         const favoritesCount = this.wishes.filter(w => w.favorited).length + 
                               this.galleryItems.filter(i => i.favorited).length;
 
-        document.getElementById('total-wishes').textContent = totalWishes;
-        document.getElementById('completed-count').textContent = completedCount;
-        document.getElementById('favorites-count').textContent = favoritesCount;
+        const totalElement = document.getElementById('total-wishes');
+        const completedElement = document.getElementById('completed-count');
+        const favoritesElement = document.getElementById('favorites-count');
+        
+        if (totalElement) totalElement.textContent = totalWishes;
+        if (completedElement) completedElement.textContent = completedCount;
+        if (favoritesElement) favoritesElement.textContent = favoritesCount;
     }
 
     createMagicParticles() {
-        if (!this.settings.particlesEnabled) return;
+        if (!this.state.settings.particlesEnabled) return;
 
         const particlesContainer = document.querySelector('.magic-particles');
+        if (!particlesContainer) return;
         
         for (let i = 0; i < 50; i++) {
             const particle = document.createElement('div');
@@ -901,20 +1252,25 @@ class GjinnApp {
         }
 
         // Add particle animation keyframes
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes float-particle {
-                0% { transform: translateY(0px) rotate(0deg); opacity: 0; }
-                10% { opacity: 1; }
-                90% { opacity: 1; }
-                100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
-            }
-        `;
-        document.head.appendChild(style);
+        if (!document.getElementById('particle-styles')) {
+            const style = document.createElement('style');
+            style.id = 'particle-styles';
+            style.textContent = `
+                @keyframes float-particle {
+                    0% { transform: translateY(0px) rotate(0deg); opacity: 0; }
+                    10% { opacity: 1; }
+                    90% { opacity: 1; }
+                    100% { transform: translateY(-100vh) rotate(360deg); opacity: 0; }
+                }
+            `;
+            document.head.appendChild(style);
+        }
     }
 
     startInputSparkles() {
         const sparklesContainer = document.querySelector('.input-sparkles');
+        if (!sparklesContainer) return;
+        
         sparklesContainer.innerHTML = '';
         
         for (let i = 0; i < 10; i++) {
@@ -936,41 +1292,52 @@ class GjinnApp {
 
     stopInputSparkles() {
         const sparklesContainer = document.querySelector('.input-sparkles');
-        sparklesContainer.innerHTML = '';
+        if (sparklesContainer) {
+            sparklesContainer.innerHTML = '';
+        }
     }
 
     updateInputSparkles() {
         const input = document.getElementById('wish-input');
-        if (input.value.length > 0 && document.activeElement === input) {
+        if (input && input.value.length > 0 && document.activeElement === input) {
             this.startInputSparkles();
         }
     }
 
     startSparkleAnimation() {
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes sparkle-twinkle {
-                0% { opacity: 0; transform: scale(0); }
-                100% { opacity: 1; transform: scale(1); }
-            }
-        `;
-        document.head.appendChild(style);
+        if (!document.getElementById('sparkle-styles')) {
+            const style = document.createElement('style');
+            style.id = 'sparkle-styles';
+            style.textContent = `
+                @keyframes sparkle-twinkle {
+                    0% { opacity: 0; transform: scale(0); }
+                    100% { opacity: 1; transform: scale(1); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
     }
 
     showSuccessModal(message) {
         const modal = document.getElementById('success-modal');
         const messageEl = document.getElementById('success-message');
-        messageEl.textContent = message;
-        modal.classList.remove('hidden');
         
-        // Auto close after 3 seconds
-        setTimeout(() => {
-            this.closeSuccessModal();
-        }, 3000);
+        if (modal && messageEl) {
+            messageEl.textContent = message;
+            modal.classList.remove('hidden');
+            
+            // Auto close after 3 seconds
+            setTimeout(() => {
+                this.closeSuccessModal();
+            }, 3000);
+        }
     }
 
     closeSuccessModal() {
-        document.getElementById('success-modal').classList.add('hidden');
+        const modal = document.getElementById('success-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
     }
 
     showNotification(message, type = 'info') {
@@ -980,15 +1347,18 @@ class GjinnApp {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: ${type === 'success' ? 'rgba(78, 205, 196, 0.9)' : 
-                        type === 'warning' ? 'rgba(255, 193, 7, 0.9)' : 
-                        'rgba(52, 152, 219, 0.9)'};
+            background: ${type === 'success' ? 'rgba(34, 197, 94, 0.9)' : 
+                        type === 'warning' ? 'rgba(251, 191, 36, 0.9)' : 
+                        type === 'error' ? 'rgba(239, 68, 68, 0.9)' :
+                        'rgba(59, 130, 246, 0.9)'};
             color: white;
             padding: 12px 20px;
             border-radius: 8px;
             z-index: 1001;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             animation: slideInRight 0.3s ease-out;
+            max-width: 300px;
+            word-wrap: break-word;
         `;
         notification.textContent = message;
         document.body.appendChild(notification);
@@ -996,27 +1366,34 @@ class GjinnApp {
         setTimeout(() => {
             notification.style.animation = 'fadeOut 0.3s ease-out forwards';
             setTimeout(() => {
-                document.body.removeChild(notification);
+                if (document.body.contains(notification)) {
+                    document.body.removeChild(notification);
+                }
             }, 300);
         }, 3000);
 
         // Add animation styles
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideInRight {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-            @keyframes fadeOut {
-                to { opacity: 0; transform: translateX(100%); }
-            }
-        `;
-        document.head.appendChild(style);
+        if (!document.getElementById('notification-styles')) {
+            const style = document.createElement('style');
+            style.id = 'notification-styles';
+            style.textContent = `
+                @keyframes slideInRight {
+                    from { transform: translateX(100%); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+                @keyframes fadeOut {
+                    to { opacity: 0; transform: translateX(100%); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
     }
 
     toggleParticles() {
         const particlesContainer = document.querySelector('.magic-particles');
-        if (this.settings.particlesEnabled) {
+        if (!particlesContainer) return;
+        
+        if (this.state.settings.particlesEnabled) {
             particlesContainer.innerHTML = '';
             this.createMagicParticles();
         } else {
@@ -1026,7 +1403,7 @@ class GjinnApp {
 
     toggleAnimations() {
         const body = document.body;
-        if (this.settings.animationsEnabled) {
+        if (this.state.settings.animationsEnabled) {
             body.classList.remove('no-animations');
         } else {
             body.classList.add('no-animations');
@@ -1034,15 +1411,21 @@ class GjinnApp {
     }
 
     saveSettings() {
-        // In a real app, this would save to a backend or localStorage
-        // For now, we'll just store in memory
-        console.log('Settings saved:', this.settings);
+        // Save to localStorage
+        try {
+            localStorage.setItem('gjinn_settings', JSON.stringify(this.state.settings));
+            console.log('Settings saved:', this.state.settings);
+        } catch (error) {
+            console.error('Error saving settings:', error);
+        }
     }
 }
 
 // Global functions for onclick handlers
 function closeSuccessModal() {
-    app.closeSuccessModal();
+    if (window.app) {
+        app.closeSuccessModal();
+    }
 }
 
 // Initialize the app when the DOM is loaded
@@ -1051,13 +1434,16 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Add some CSS for disabled animations
-const noAnimationsStyle = document.createElement('style');
-noAnimationsStyle.textContent = `
-    .no-animations * {
-        animation-duration: 0s !important;
-        animation-delay: 0s !important;
-        transition-duration: 0s !important;
-        transition-delay: 0s !important;
-    }
-`;
-document.head.appendChild(noAnimationsStyle);
+if (!document.getElementById('no-animations-styles')) {
+    const noAnimationsStyle = document.createElement('style');
+    noAnimationsStyle.id = 'no-animations-styles';
+    noAnimationsStyle.textContent = `
+        .no-animations * {
+            animation-duration: 0s !important;
+            animation-delay: 0s !important;
+            transition-duration: 0s !important;
+            transition-delay: 0s !important;
+        }
+    `;
+    document.head.appendChild(noAnimationsStyle);
+}
