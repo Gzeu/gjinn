@@ -1,4 +1,4 @@
-// Gjinn AI Genie Application
+// Gjinn AI Genie Application - Fixed Navigation
 // Import daily prompts if available
 let DailyPrompts;
 if (typeof module !== 'undefined' && module.exports) {
@@ -24,9 +24,9 @@ class GjinnApp {
             isDarkMode: window.matchMedia('(prefers-color-scheme: dark)').matches,
             isLoading: false,
             error: null,
-            currentModel: CONFIG?.POLLINATION?.MODELS?.STABLE_DIFFUSION || 'flux',
+            currentModel: window.CONFIG?.POLLINATION?.MODELS?.DEFAULT || 'flux',
             settings: {
-                model: CONFIG?.POLLINATION?.MODELS?.STABLE_DIFFUSION || 'flux',
+                model: window.CONFIG?.POLLINATION?.MODELS?.DEFAULT || 'flux',
                 stylePreset: 'fantasy-art',
                 steps: 50,
                 width: 1024,
@@ -54,45 +54,26 @@ class GjinnApp {
                 currentPrompt: '',
                 estimatedTimeRemaining: null
             },
-            dailyPrompt: null
+            dailyPrompt: null,
+            currentSection: 'home'
         };
 
         // Bind methods
         this.init = this.init.bind(this);
         this.toggleDarkMode = this.toggleDarkMode.bind(this);
         this.handleError = this.handleError.bind(this);
+        this.showSection = this.showSection.bind(this);
+        this.createWish = this.createWish.bind(this);
         
         // Initialize the app
         this.init();
     }
 
-    initializeDailyPrompts() {
-        try {
-            // Try to initialize from global if loaded
-            if (window.DailyPrompts) {
-                this.dailyPrompts = new window.DailyPrompts();
-            } else {
-                // Fallback: create a simple daily prompts system
-                this.dailyPrompts = {
-                    prompts: [
-                        { id: 1, type: 'image', text: 'A mystical forest with glowing mushrooms at twilight', category: 'fantasy' },
-                        { id: 2, type: 'image', text: 'Floating islands connected by bridges of pure light', category: 'fantasy' },
-                        { id: 3, type: 'audio', text: 'The sound of wind chimes in a magical garden', category: 'ambient' }
-                    ],
-                    getTodaysPrompt() {
-                        const dayIndex = new Date().getDate() % this.prompts.length;
-                        return { ...this.prompts[dayIndex], isToday: true, date: new Date().toDateString() };
-                    }
-                };
-            }
-        } catch (error) {
-            console.warn('Could not initialize daily prompts:', error);
-        }
-    }
-
     async init() {
         try {
-            // Initialize UI
+            console.log('🚀 Initializing Gjinn...');
+            
+            // Initialize UI first
             this.setupEventListeners();
             this.createMagicParticles();
             this.startSparkleAnimation();
@@ -113,21 +94,416 @@ class GjinnApp {
             this.updateStats();
             this.renderAllSections();
             
-            // Initialize Pollination
-            await this.initializePollination();
+            // Initialize database connection
+            await this.initializeDatabase();
             
-            console.log('Gjinn initialized successfully');
+            console.log('✅ Gjinn initialized successfully');
         } catch (error) {
-            console.error('Error initializing Gjinn:', error);
+            console.error('❌ Error initializing Gjinn:', error);
             this.handleError(error, 'init');
         }
     }
 
+    async initializeDatabase() {
+        try {
+            // Check if database operations are available
+            if (window.dbOps) {
+                console.log('✅ Database operations available');
+                return true;
+            } else {
+                console.log('ℹ️ Database not available - using localStorage only');
+                return false;
+            }
+        } catch (error) {
+            console.warn('⚠️ Database initialization warning:', error);
+            return false;
+        }
+    }
+
+    setupEventListeners() {
+        console.log('🔌 Setting up event listeners...');
+        
+        // Navigation - Fixed implementation
+        const navLinks = document.querySelectorAll('.nav-link');
+        console.log(`Found ${navLinks.length} navigation links`);
+        
+        navLinks.forEach((link, index) => {
+            const section = link.dataset.section;
+            console.log(`Setting up nav link ${index}: ${section}`);
+            
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log(`Navigation clicked: ${section}`);
+                this.showSection(section);
+            });
+        });
+
+        // Wish creation buttons - Fixed implementation
+        const magicalBtns = document.querySelectorAll('.btn--magical');
+        console.log(`Found ${magicalBtns.length} magical buttons`);
+        
+        magicalBtns.forEach((btn, index) => {
+            const type = btn.dataset.type;
+            console.log(`Setting up magical button ${index}: ${type}`);
+            
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                console.log(`Magical button clicked: ${type}`);
+                this.createWish(type);
+            });
+        });
+
+        // Input sparkles effect
+        const wishInput = document.getElementById('wish-input');
+        if (wishInput) {
+            wishInput.addEventListener('focus', () => this.startInputSparkles());
+            wishInput.addEventListener('blur', () => this.stopInputSparkles());
+            wishInput.addEventListener('input', () => this.updateInputSparkles());
+            console.log('✅ Wish input events set up');
+        } else {
+            console.warn('⚠️ Wish input not found');
+        }
+
+        // Gallery filters
+        const filterBtns = document.querySelectorAll('.filter-btn');
+        filterBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                this.filterGallery(e.target.dataset.filter);
+            });
+        });
+
+        // Settings event listeners
+        this.setupSettingsListeners();
+        
+        // Auth event listeners
+        this.setupAuthListeners();
+        
+        console.log('✅ All event listeners set up successfully');
+    }
+    
+    setupSettingsListeners() {
+        // Model selection
+        const imageModel = document.getElementById('image-model');
+        if (imageModel) {
+            imageModel.addEventListener('change', (e) => {
+                this.state.settings.model = e.target.value;
+                this.saveSettings();
+            });
+        }
+
+        // Checkbox settings
+        const checkboxSettings = [
+            { id: 'particles-enabled', key: 'particlesEnabled', callback: () => this.toggleParticles() },
+            { id: 'animations-enabled', key: 'animationsEnabled', callback: () => this.toggleAnimations() },
+            { id: 'sound-effects', key: 'soundEffects' },
+            { id: 'daily-prompts-enabled', key: 'showDailyPrompts', callback: () => this.renderDailyPrompt() },
+            { id: 'auto-save', key: 'autoSave' }
+        ];
+        
+        checkboxSettings.forEach(setting => {
+            const element = document.getElementById(setting.id);
+            if (element) {
+                element.addEventListener('change', (e) => {
+                    this.state.settings[setting.key] = e.target.checked;
+                    if (setting.callback) setting.callback();
+                    this.saveSettings();
+                });
+            }
+        });
+    }
+    
+    setupAuthListeners() {
+        // Sign in buttons
+        const signinGoogle = document.getElementById('signin-google');
+        if (signinGoogle) {
+            signinGoogle.addEventListener('click', () => this.signInWithGoogle());
+        }
+        
+        const signinGithub = document.getElementById('signin-github');
+        if (signinGithub) {
+            signinGithub.addEventListener('click', () => this.signInWithGithub());
+        }
+        
+        // Modal controls
+        const authSignin = document.getElementById('auth-signin');
+        if (authSignin) {
+            authSignin.addEventListener('click', () => this.showAuthModal('signin'));
+        }
+        
+        const authSignup = document.getElementById('auth-signup');
+        if (authSignup) {
+            authSignup.addEventListener('click', () => this.showAuthModal('signup'));
+        }
+        
+        const authSignout = document.getElementById('auth-signout');
+        if (authSignout) {
+            authSignout.addEventListener('click', () => this.signOut());
+        }
+        
+        // Modal close
+        const modalClose = document.querySelector('.modal-close');
+        if (modalClose) {
+            modalClose.addEventListener('click', () => this.closeAuthModal());
+        }
+        
+        const modalBackdrop = document.querySelector('.modal-backdrop');
+        if (modalBackdrop) {
+            modalBackdrop.addEventListener('click', () => this.closeAuthModal());
+        }
+    }
+
+    showSection(sectionName) {
+        console.log(`📋 Showing section: ${sectionName}`);
+        
+        // Update state
+        this.state.currentSection = sectionName;
+        
+        // Hide all sections
+        const sections = document.querySelectorAll('.section');
+        sections.forEach(section => {
+            section.classList.remove('active');
+        });
+
+        // Show target section
+        const targetSection = document.getElementById(sectionName);
+        if (targetSection) {
+            targetSection.classList.add('active');
+            console.log(`✅ Section ${sectionName} activated`);
+        } else {
+            console.error(`❌ Section ${sectionName} not found`);
+            return;
+        }
+
+        // Update navigation
+        const navLinks = document.querySelectorAll('.nav-link');
+        navLinks.forEach(link => {
+            link.classList.remove('active');
+        });
+        
+        const targetNav = document.querySelector(`[data-section="${sectionName}"]`);
+        if (targetNav) {
+            targetNav.classList.add('active');
+            console.log(`✅ Navigation ${sectionName} activated`);
+        }
+
+        // Render section-specific content
+        this.renderSection(sectionName);
+    }
+
+    renderSection(sectionName) {
+        console.log(`🎨 Rendering section: ${sectionName}`);
+        
+        switch(sectionName) {
+            case 'home':
+                this.renderActiveWishes();
+                this.renderCompletedWishes();
+                this.renderDailyPrompt();
+                break;
+            case 'wishes':
+                this.renderAllWishes();
+                break;
+            case 'gallery':
+                this.renderGallery();
+                break;
+            case 'settings':
+                this.loadSettingsValues();
+                break;
+        }
+    }
+    
+    loadSettingsValues() {
+        // Load current settings into form elements
+        const imageModel = document.getElementById('image-model');
+        if (imageModel) {
+            imageModel.value = this.state.settings.model;
+        }
+        
+        // Load checkbox values
+        const checkboxes = {
+            'particles-enabled': this.state.settings.particlesEnabled,
+            'animations-enabled': this.state.settings.animationsEnabled,
+            'sound-effects': this.state.settings.soundEffects,
+            'daily-prompts-enabled': this.state.settings.showDailyPrompts,
+            'auto-save': this.state.settings.autoSave
+        };
+        
+        Object.entries(checkboxes).forEach(([id, value]) => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.checked = value;
+            }
+        });
+    }
+
+    createWish(type) {
+        console.log(`✨ Creating wish of type: ${type}`);
+        
+        const input = document.getElementById('wish-input');
+        const text = input ? input.value.trim() : '';
+
+        if (!text) {
+            this.showNotification('Please enter your creative wish first!', 'warning');
+            if (input) input.focus();
+            return;
+        }
+
+        const wish = {
+            id: this.state.currentWishId++,
+            text: text,
+            type: type,
+            status: 'queued',
+            progress: 0,
+            createdAt: new Date().toISOString(),
+            favorited: false,
+            downloads: 0
+        };
+
+        this.state.wishes.unshift(wish);
+        if (input) input.value = '';
+        
+        // Check if this matches today's prompt and mark as completed
+        if (this.state.dailyPrompt && text === this.state.dailyPrompt.text) {
+            if (this.dailyPrompts.markTodaysPromptCompleted) {
+                this.dailyPrompts.markTodaysPromptCompleted(wish.id);
+                this.showNotification('🎉 Daily challenge completed! Keep up the streak!', 'success');
+                setTimeout(() => this.renderDailyPrompt(), 500);
+            }
+        }
+        
+        this.showSuccessModal(`Your ${type} creation wish has been granted!`);
+        this.simulateWishProcessing(wish);
+        this.renderAllSections();
+        this.updateStats();
+        
+        console.log(`✅ Wish created successfully:`, wish);
+    }
+
+    // Authentication methods
+    async signInWithGoogle() {
+        console.log('🔑 Attempting Google sign in...');
+        
+        if (window.supabaseIntegration) {
+            try {
+                await window.supabaseIntegration.signInWithGoogle();
+                this.showNotification('Signing in with Google...', 'info');
+            } catch (error) {
+                console.error('Google sign in error:', error);
+                this.showNotification('Sign in failed. Please try again.', 'error');
+            }
+        } else {
+            this.showNotification('Authentication not available', 'warning');
+        }
+    }
+    
+    async signInWithGithub() {
+        console.log('🔑 Attempting GitHub sign in...');
+        
+        if (window.supabaseIntegration) {
+            try {
+                await window.supabaseIntegration.signInWithGitHub();
+                this.showNotification('Signing in with GitHub...', 'info');
+            } catch (error) {
+                console.error('GitHub sign in error:', error);
+                this.showNotification('Sign in failed. Please try again.', 'error');
+            }
+        } else {
+            this.showNotification('Authentication not available', 'warning');
+        }
+    }
+    
+    async signOut() {
+        console.log('🔑 Signing out...');
+        
+        if (window.supabaseIntegration) {
+            try {
+                await window.supabaseIntegration.signOut();
+                this.showNotification('Signed out successfully', 'success');
+                this.updateUserUI();
+            } catch (error) {
+                console.error('Sign out error:', error);
+                this.showNotification('Sign out failed', 'error');
+            }
+        }
+    }
+    
+    showAuthModal(mode = 'signin') {
+        const modal = document.getElementById('auth-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            
+            // Show the correct form
+            const forms = modal.querySelectorAll('.auth-form');
+            forms.forEach(form => form.classList.remove('active'));
+            
+            const targetForm = document.getElementById(`${mode}-form`);
+            if (targetForm) {
+                targetForm.classList.add('active');
+            }
+        }
+    }
+    
+    closeAuthModal() {
+        const modal = document.getElementById('auth-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+    }
+    
+    updateUserUI() {
+        const isSignedIn = window.supabaseIntegration?.isSignedIn() || false;
+        const userDisplayName = window.supabaseIntegration?.getUserDisplayName() || 'Guest';
+        
+        // Update display name
+        const displayNameEl = document.getElementById('user-display-name');
+        if (displayNameEl) {
+            displayNameEl.textContent = userDisplayName;
+        }
+        
+        // Toggle menu visibility
+        const signedOutMenu = document.getElementById('signed-out-menu');
+        const signedInMenu = document.getElementById('signed-in-menu');
+        
+        if (signedOutMenu && signedInMenu) {
+            if (isSignedIn) {
+                signedOutMenu.classList.add('hidden');
+                signedInMenu.classList.remove('hidden');
+            } else {
+                signedOutMenu.classList.remove('hidden');
+                signedInMenu.classList.add('hidden');
+            }
+        }
+    }
+
+    // Rest of the methods remain the same...
+    initializeDailyPrompts() {
+        try {
+            if (window.DailyPrompts) {
+                this.dailyPrompts = new window.DailyPrompts();
+            } else {
+                this.dailyPrompts = {
+                    prompts: [
+                        { id: 1, type: 'image', text: 'A mystical forest with glowing mushrooms at twilight', category: 'fantasy' },
+                        { id: 2, type: 'image', text: 'Floating islands connected by bridges of pure light', category: 'fantasy' },
+                        { id: 3, type: 'audio', text: 'The sound of wind chimes in a magical garden', category: 'ambient' }
+                    ],
+                    getTodaysPrompt() {
+                        const dayIndex = new Date().getDate() % this.prompts.length;
+                        return { ...this.prompts[dayIndex], isToday: true, date: new Date().toDateString() };
+                    }
+                };
+            }
+        } catch (error) {
+            console.warn('Could not initialize daily prompts:', error);
+        }
+    }
+    
     initializeTodaysPrompt() {
         if (this.dailyPrompts) {
             try {
                 const todaysPrompt = this.dailyPrompts.getTodaysPrompt();
-                this.setState({ dailyPrompt: todaysPrompt });
+                this.state.dailyPrompt = todaysPrompt;
                 this.renderDailyPrompt();
             } catch (error) {
                 console.error('Error loading today\'s prompt:', error);
@@ -140,11 +516,12 @@ class GjinnApp {
         
         if (!dailyPrompt || !settings.showDailyPrompts) return;
         
-        // Check if daily prompt container exists, if not create it
         let container = document.getElementById('daily-prompt-container');
         if (!container) {
             container = this.createDailyPromptContainer();
         }
+        
+        if (!container) return;
         
         const isCompleted = this.dailyPrompts.hasCompletedTodaysPrompt ? 
             this.dailyPrompts.hasCompletedTodaysPrompt() : false;
@@ -195,7 +572,6 @@ class GjinnApp {
         container.id = 'daily-prompt-container';
         container.className = 'daily-prompt-container';
         
-        // Insert after hero title/subtitle but before wish maker
         const wishMaker = heroContent.querySelector('.wish-maker');
         if (wishMaker) {
             heroContent.insertBefore(container, wishMaker);
@@ -203,14 +579,15 @@ class GjinnApp {
             heroContent.appendChild(container);
         }
         
-        // Add styles for daily prompt
         this.addDailyPromptStyles();
-        
         return container;
     }
     
     addDailyPromptStyles() {
+        if (document.getElementById('daily-prompt-styles')) return;
+        
         const style = document.createElement('style');
+        style.id = 'daily-prompt-styles';
         style.textContent = `
             .daily-prompt-container {
                 margin: 2rem 0;
@@ -231,11 +608,6 @@ class GjinnApp {
                 border-color: rgba(116, 58, 213, 0.5);
                 box-shadow: 0 8px 32px rgba(116, 58, 213, 0.2);
                 transform: translateY(-2px);
-            }
-            
-            .daily-prompt-card.completed {
-                border-color: rgba(34, 197, 94, 0.4);
-                background: linear-gradient(135deg, rgba(34, 197, 94, 0.15), rgba(34, 197, 94, 0.1));
             }
             
             .daily-prompt-header {
@@ -266,42 +638,6 @@ class GjinnApp {
                 font-size: 0.875rem;
             }
             
-            .prompt-content {
-                margin-bottom: 1.5rem;
-            }
-            
-            .prompt-type {
-                font-size: 0.875rem;
-                color: #9F7AEA;
-                margin-bottom: 0.5rem;
-                font-weight: 500;
-            }
-            
-            .prompt-text {
-                font-size: 1.125rem;
-                font-weight: 600;
-                color: var(--text-primary, #2D3748);
-                margin: 0 0 0.5rem 0;
-                line-height: 1.4;
-            }
-            
-            .prompt-category {
-                display: inline-block;
-                background: rgba(116, 58, 213, 0.1);
-                color: #9F7AEA;
-                padding: 0.25rem 0.5rem;
-                border-radius: 12px;
-                font-size: 0.75rem;
-                font-weight: 500;
-                text-transform: capitalize;
-            }
-            
-            .prompt-actions {
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            
             .btn--daily-prompt {
                 background: linear-gradient(135deg, #9F7AEA, #B794F6);
                 color: white;
@@ -321,29 +657,6 @@ class GjinnApp {
                 transform: translateY(-1px);
                 box-shadow: 0 4px 16px rgba(139, 92, 246, 0.3);
             }
-            
-            .completed-badge {
-                color: #059669;
-                font-weight: 600;
-                display: flex;
-                align-items: center;
-                gap: 0.5rem;
-            }
-            
-            .btn-sparkle {
-                animation: sparkle-rotate 2s ease-in-out infinite;
-            }
-            
-            @keyframes sparkle-rotate {
-                0%, 100% { transform: rotate(0deg); }
-                50% { transform: rotate(180deg); }
-            }
-            
-            @media (prefers-color-scheme: dark) {
-                .prompt-text {
-                    color: #F7FAFC;
-                }
-            }
         `;
         document.head.appendChild(style);
     }
@@ -352,367 +665,39 @@ class GjinnApp {
         const { dailyPrompt } = this.state;
         if (!dailyPrompt) return;
         
-        // Set the prompt text in the input field
         const wishInput = document.getElementById('wish-input');
         if (wishInput) {
             wishInput.value = dailyPrompt.text;
             wishInput.focus();
         }
         
-        // Show notification
         this.showNotification('Daily prompt loaded! Ready to create? ✨', 'success');
-        
-        // Highlight the create buttons
         this.highlightCreateButtons(dailyPrompt.type);
     }
     
     highlightCreateButtons(preferredType) {
-        // Remove existing highlights
         document.querySelectorAll('.btn--magical').forEach(btn => {
             btn.classList.remove('highlighted', 'preferred');
         });
         
-        // Highlight all buttons briefly
         document.querySelectorAll('.btn--magical').forEach(btn => {
             btn.classList.add('highlighted');
         });
         
-        // Mark the preferred type
         const preferredBtn = document.querySelector(`[data-type="${preferredType}"]`);
         if (preferredBtn) {
             preferredBtn.classList.add('preferred');
         }
         
-        // Remove highlights after animation
         setTimeout(() => {
             document.querySelectorAll('.btn--magical').forEach(btn => {
                 btn.classList.remove('highlighted');
             });
         }, 2000);
-        
-        // Add button highlight styles if not already added
-        this.addButtonHighlightStyles();
-    }
-    
-    addButtonHighlightStyles() {
-        if (document.getElementById('button-highlight-styles')) return;
-        
-        const style = document.createElement('style');
-        style.id = 'button-highlight-styles';
-        style.textContent = `
-            .btn--magical.highlighted {
-                animation: pulse-glow 0.6s ease-in-out;
-                box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
-            }
-            
-            .btn--magical.preferred {
-                background: linear-gradient(135deg, #9F7AEA, #B794F6) !important;
-                box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
-            }
-            
-            @keyframes pulse-glow {
-                0%, 100% { 
-                    transform: scale(1); 
-                    box-shadow: 0 0 20px rgba(139, 92, 246, 0.5);
-                }
-                50% { 
-                    transform: scale(1.02); 
-                    box-shadow: 0 0 30px rgba(139, 92, 246, 0.7);
-                }
-            }
-        `;
-        document.head.appendChild(style);
-    }
-    
-    /**
-     * Initialize Pollination with API key if needed
-     */
-    async initializePollination() {
-        try {
-            // Check if Pollination is available
-            if (!this.pollination) {
-                console.warn('Pollination not available');
-                return false;
-            }
-            
-            // Check if we have a stored API key
-            const apiKey = localStorage.getItem('pollination_api_key');
-            if (apiKey) {
-                this.pollination.configure({ apiKey });
-            }
-            
-            // Check API status
-            const status = await this.pollination.status();
-            console.log('Pollination API status:', status);
-            
-            return true;
-        } catch (error) {
-            console.warn('Pollination initialization warning:', error.message);
-            // Continue without API key (using public endpoint with limitations)
-            return false;
-        }
-    }
-    
-    /**
-     * Generate an image using Pollination
-     * @param {string} prompt - The text prompt for image generation
-     * @param {object} options - Generation options
-     */
-    async generateImage(prompt, options = {}) {
-        if (!prompt || prompt.trim() === '') {
-            throw new Error('Prompt cannot be empty');
-        }
-        
-        // Check rate limiting
-        if (!this.canMakeRequest()) {
-            throw new Error('Rate limit exceeded. Please try again later.');
-        }
-        
-        try {
-            // Update UI state
-            this.setState({
-                generationStatus: {
-                    isGenerating: true,
-                    progress: 0,
-                    currentPrompt: prompt,
-                    estimatedTimeRemaining: 'Calculating...'
-                },
-                isLoading: true
-            });
-            
-            // Prepare generation options
-            const generationOptions = {
-                model: this.state.settings.model,
-                prompt: prompt,
-                ...options,
-                // Override with user settings
-                width: this.state.settings.width,
-                height: this.state.settings.height,
-                steps: this.state.settings.steps,
-                seed: this.state.settings.seed === -1 ? Math.floor(Math.random() * 1000000) : this.state.settings.seed
-            };
-            
-            // Track start time
-            const startTime = Date.now();
-            
-            // Start generation
-            const result = await this.pollination.generate(generationOptions, 
-                // Progress callback
-                (progress) => {
-                    this.updateGenerationProgress(progress, startTime);
-                }
-            );
-            
-            // Save the generated image
-            const imageData = {
-                id: `img_${Date.now()}`,
-                prompt: prompt,
-                imageUrl: result.url,
-                model: generationOptions.model,
-                timestamp: new Date().toISOString(),
-                settings: generationOptions,
-                userId: this.state.user.userId,
-                isPublic: this.state.user.isAuthenticated
-            };
-            
-            // Add to gallery
-            this.addToGallery(imageData);
-            
-            // Update request count
-            this.updateRequestCount();
-            
-            return imageData;
-            
-        } catch (error) {
-            console.error('Error generating image:', error);
-            this.handleError(error, 'generateImage');
-            throw error;
-        } finally {
-            // Reset generation status
-            this.setState({
-                generationStatus: {
-                    isGenerating: false,
-                    progress: 0,
-                    currentPrompt: '',
-                    estimatedTimeRemaining: null
-                },
-                isLoading: false
-            });
-        }
-    }
-    
-    /**
-     * Update generation progress
-     * @param {number} progress - Progress percentage (0-100)
-     * @param {number} startTime - Timestamp when generation started
-     */
-    updateGenerationProgress(progress, startTime) {
-        const elapsed = (Date.now() - startTime) / 1000; // in seconds
-        const estimatedTotal = (elapsed * 100) / Math.max(progress, 1);
-        const remaining = Math.max(0, estimatedTotal - elapsed);
-        
-        this.setState({
-            generationStatus: {
-                ...this.state.generationStatus,
-                progress: Math.min(progress, 100),
-                estimatedTimeRemaining: this.formatTimeRemaining(remaining)
-            }
-        });
-    }
-    
-    /**
-     * Format time remaining in a human-readable format
-     */
-    formatTimeRemaining(seconds) {
-        if (isNaN(seconds) || seconds === 0) return 'Calculating...';
-        if (seconds < 60) return `${Math.ceil(seconds)} seconds`;
-        const minutes = Math.floor(seconds / 60);
-        return `${minutes} minute${minutes > 1 ? 's' : ''}`;
-    }
-    
-    /**
-     * Check if user can make a new request based on rate limiting
-     */
-    canMakeRequest() {
-        const { user } = this.state;
-        const now = Date.now();
-        
-        // Reset counter if it's been more than an hour since last request
-        if (user.lastRequestTime && (now - user.lastRequestTime) > 3600000) {
-            this.setState({
-                user: {
-                    ...user,
-                    requestCount: 0,
-                    lastRequestTime: now
-                }
-            });
-            return true;
-        }
-        
-        // Check if user has remaining requests (default to 10 if CONFIG not available)
-        const maxRequests = CONFIG?.APP?.MAX_REQUESTS_PER_HOUR || 10;
-        return user.requestCount < maxRequests;
-    }
-    
-    /**
-     * Update request count and last request time
-     */
-    updateRequestCount() {
-        const { user } = this.state;
-        this.setState({
-            user: {
-                ...user,
-                requestCount: (user.requestCount || 0) + 1,
-                lastRequestTime: Date.now()
-            }
-        });
-    }
-    
-    /**
-     * Load gallery items from local storage
-     */
-    async loadGalleryItems() {
-        try {
-            // Load from local storage
-            const savedItems = localStorage.getItem('gjinn_gallery');
-            const items = savedItems ? JSON.parse(savedItems) : [];
-            
-            this.setState({
-                galleryItems: items,
-                currentWishId: items.length > 0 ? Math.max(...items.map(i => i.id || 0)) + 1 : 1
-            });
-            
-            return items;
-        } catch (error) {
-            console.error('Error loading gallery items:', error);
-            this.handleError(error, 'loadGalleryItems');
-            return [];
-        }
-    }
-    
-    /**
-     * Add an image to the gallery
-     */
-    addToGallery(imageData) {
-        const newGallery = [imageData, ...this.state.galleryItems];
-        
-        // Update state
-        this.setState({
-            galleryItems: newGallery,
-            currentWishId: this.state.currentWishId + 1
-        });
-        
-        // Persist to local storage
-        localStorage.setItem('gjinn_gallery', JSON.stringify(newGallery));
-        
-        // Update UI
-        this.renderGallery();
-    }
-    
-    /**
-     * Load user data from local storage
-     */
-    async loadUserData() {
-        try {
-            // Load from local storage
-            const savedData = localStorage.getItem('gjinn_user');
-            if (savedData) {
-                const userData = JSON.parse(savedData);
-                this.setState({
-                    user: {
-                        ...this.state.user,
-                        ...userData,
-                        favorites: new Set(userData.favorites || [])
-                    }
-                });
-                return userData;
-            }
-            return null;
-        } catch (error) {
-            console.error('Error loading user data:', error);
-            this.handleError(error, 'loadUserData');
-            return null;
-        }
-    }
-    
-    /**
-     * Save user data to local storage
-     */
-    saveUserData() {
-        try {
-            const userData = {
-                ...this.state.user,
-                favorites: Array.from(this.state.user.favorites)
-            };
-            localStorage.setItem('gjinn_user', JSON.stringify(userData));
-        } catch (error) {
-            console.error('Error saving user data:', error);
-        }
-    }
-    
-    /**
-     * Update state and trigger re-renders
-     */
-    setState(newState) {
-        this.state = { ...this.state, ...newState };
-        // Save user data when state changes
-        if (newState.user) {
-            this.saveUserData();
-        }
-    }
-    
-    /**
-     * Handle errors gracefully
-     */
-    handleError(error, context) {
-        console.error(`Error in ${context}:`, error);
-        this.setState({ error: error.message });
-        this.showNotification(`An error occurred: ${error.message}`, 'error');
     }
 
     loadSampleData() {
-        // Load sample wishes from the provided data
-        this.wishes = [
+        this.state.wishes = [
             {
                 id: 1,
                 text: "A mystical forest with glowing mushrooms",
@@ -732,40 +717,10 @@ class GjinnApp {
                 createdAt: "2025-10-01T14:20:00Z",
                 favorited: false,
                 downloads: 12
-            },
-            {
-                id: 3,
-                text: "A cyberpunk cityscape at night",
-                type: "image",
-                status: "processing",
-                progress: 75,
-                createdAt: "2025-10-02T10:15:00Z",
-                favorited: false,
-                downloads: 0
-            },
-            {
-                id: 4,
-                text: "Epic fantasy adventure story",
-                type: "text",
-                status: "completed",
-                wordCount: 450,
-                createdAt: "2025-10-01T18:45:00Z",
-                favorited: true,
-                downloads: 31
-            },
-            {
-                id: 5,
-                text: "Peaceful rain sounds for meditation",
-                type: "audio",
-                status: "queued",
-                createdAt: "2025-10-02T11:00:00Z",
-                favorited: false,
-                downloads: 0
             }
         ];
 
-        // Load gallery items
-        this.galleryItems = [
+        this.state.galleryItems = [
             {
                 id: 101,
                 title: "Cosmic Nebula",
@@ -781,211 +736,11 @@ class GjinnApp {
                 duration: "0:45",
                 favorited: false,
                 downloads: 12
-            },
-            {
-                id: 103,
-                title: "Ancient Castle",
-                type: "image",
-                thumbnail: "https://picsum.photos/200/200?random=3",
-                favorited: true,
-                downloads: 31
-            },
-            {
-                id: 104,
-                title: "Jazz Cafe Ambience",
-                type: "audio",
-                duration: "3:20",
-                favorited: false,
-                downloads: 18
-            },
-            {
-                id: 105,
-                title: "Enchanted Garden",
-                type: "image",
-                thumbnail: "https://picsum.photos/200/200?random=4",
-                favorited: false,
-                downloads: 8
-            },
-            {
-                id: 106,
-                title: "Mountain Adventure Tale",
-                type: "text",
-                favorited: true,
-                downloads: 15
             }
         ];
     }
 
-    setupEventListeners() {
-        // Navigation
-        document.querySelectorAll('.nav-link').forEach(link => {
-            link.addEventListener('click', (e) => {
-                e.preventDefault();
-                const section = e.target.dataset.section;
-                this.showSection(section);
-            });
-        });
-
-        // Wish creation buttons
-        document.querySelectorAll('.btn--magical').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const type = e.currentTarget.dataset.type;
-                this.createWish(type);
-            });
-        });
-
-        // Input sparkles effect
-        const wishInput = document.getElementById('wish-input');
-        if (wishInput) {
-            wishInput.addEventListener('focus', () => this.startInputSparkles());
-            wishInput.addEventListener('blur', () => this.stopInputSparkles());
-            wishInput.addEventListener('input', () => this.updateInputSparkles());
-        }
-
-        // Gallery filters
-        document.querySelectorAll('.filter-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                this.filterGallery(e.target.dataset.filter);
-            });
-        });
-
-        // Settings
-        const imageModel = document.getElementById('image-model');
-        if (imageModel) {
-            imageModel.addEventListener('change', (e) => {
-                this.state.settings.imageModel = e.target.value;
-                this.saveSettings();
-            });
-        }
-
-        const audioQuality = document.getElementById('audio-quality');
-        if (audioQuality) {
-            audioQuality.addEventListener('change', (e) => {
-                this.state.settings.audioQuality = e.target.value;
-                this.saveSettings();
-            });
-        }
-
-        const particlesEnabled = document.getElementById('particles-enabled');
-        if (particlesEnabled) {
-            particlesEnabled.addEventListener('change', (e) => {
-                this.state.settings.particlesEnabled = e.target.checked;
-                this.toggleParticles();
-                this.saveSettings();
-            });
-        }
-
-        const animationsEnabled = document.getElementById('animations-enabled');
-        if (animationsEnabled) {
-            animationsEnabled.addEventListener('change', (e) => {
-                this.state.settings.animationsEnabled = e.target.checked;
-                this.toggleAnimations();
-                this.saveSettings();
-            });
-        }
-
-        // Modal close
-        const modalBackdrop = document.querySelector('.modal-backdrop');
-        if (modalBackdrop) {
-            modalBackdrop.addEventListener('click', () => {
-                this.closeSuccessModal();
-            });
-        }
-    }
-
-    showSection(sectionName) {
-        // Hide all sections
-        document.querySelectorAll('.section').forEach(section => {
-            section.classList.remove('active');
-        });
-
-        // Show target section
-        const targetSection = document.getElementById(sectionName);
-        if (targetSection) {
-            targetSection.classList.add('active');
-        }
-
-        // Update navigation
-        document.querySelectorAll('.nav-link').forEach(link => {
-            link.classList.remove('active');
-        });
-        const targetNav = document.querySelector(`[data-section="${sectionName}"]`);
-        if (targetNav) {
-            targetNav.classList.add('active');
-        }
-
-        // Render section-specific content
-        this.renderSection(sectionName);
-    }
-
-    renderSection(sectionName) {
-        switch(sectionName) {
-            case 'home':
-                this.renderActiveWishes();
-                this.renderCompletedWishes();
-                this.renderDailyPrompt();
-                break;
-            case 'wishes':
-                this.renderAllWishes();
-                break;
-            case 'gallery':
-                this.renderGallery();
-                break;
-        }
-    }
-
-    renderAllSections() {
-        this.renderActiveWishes();
-        this.renderCompletedWishes();
-        this.renderAllWishes();
-        this.renderGallery();
-        this.renderDailyPrompt();
-    }
-
-    createWish(type) {
-        const input = document.getElementById('wish-input');
-        const text = input ? input.value.trim() : '';
-
-        if (!text) {
-            this.showNotification('Please enter your creative wish first!', 'warning');
-            if (input) input.focus();
-            return;
-        }
-
-        const wish = {
-            id: this.currentWishId++,
-            text: text,
-            type: type,
-            status: 'queued',
-            progress: 0,
-            createdAt: new Date().toISOString(),
-            favorited: false,
-            downloads: 0
-        };
-
-        this.wishes.unshift(wish);
-        if (input) input.value = '';
-        
-        // Check if this matches today's prompt and mark as completed
-        if (this.state.dailyPrompt && text === this.state.dailyPrompt.text) {
-            if (this.dailyPrompts.markTodaysPromptCompleted) {
-                this.dailyPrompts.markTodaysPromptCompleted(wish.id);
-                this.showNotification('🎉 Daily challenge completed! Keep up the streak!', 'success');
-                // Update the daily prompt display
-                setTimeout(() => this.renderDailyPrompt(), 500);
-            }
-        }
-        
-        this.showSuccessModal(`Your ${type} creation wish has been granted!`);
-        this.simulateWishProcessing(wish);
-        this.renderAllSections();
-        this.updateStats();
-    }
-
     simulateWishProcessing(wish) {
-        // Simulate processing stages
         setTimeout(() => {
             wish.status = 'processing';
             wish.progress = 25;
@@ -1030,7 +785,7 @@ class GjinnApp {
         const container = document.getElementById('active-wishes');
         if (!container) return;
         
-        const activeWishes = this.wishes.filter(w => w.status === 'queued' || w.status === 'processing');
+        const activeWishes = this.state.wishes.filter(w => w.status === 'queued' || w.status === 'processing');
         
         if (activeWishes.length === 0) {
             container.innerHTML = '<div class="empty-state">No active wishes at the moment. Make a wish above! ✨</div>';
@@ -1044,8 +799,7 @@ class GjinnApp {
         const container = document.getElementById('completed-wishes');
         if (!container) return;
         
-        const completedWishes = this.wishes.filter(w => w.status === 'completed').slice(0, 6);
-        
+        const completedWishes = this.state.wishes.filter(w => w.status === 'completed').slice(0, 6);
         container.innerHTML = completedWishes.map(wish => this.createWishCard(wish)).join('');
     }
 
@@ -1053,7 +807,7 @@ class GjinnApp {
         const container = document.getElementById('all-wishes-container');
         if (!container) return;
         
-        container.innerHTML = this.wishes.map(wish => this.createWishCard(wish)).join('');
+        container.innerHTML = this.state.wishes.map(wish => this.createWishCard(wish)).join('');
     }
 
     createWishCard(wish) {
@@ -1117,10 +871,9 @@ class GjinnApp {
         const container = document.getElementById('gallery-items');
         if (!container) return;
         
-        let items = [...this.galleryItems];
+        let items = [...this.state.galleryItems];
 
-        // Add completed wishes to gallery
-        const completedWishes = this.wishes.filter(w => w.status === 'completed');
+        const completedWishes = this.state.wishes.filter(w => w.status === 'completed');
         completedWishes.forEach(wish => {
             items.push({
                 id: `wish-${wish.id}`,
@@ -1185,24 +938,31 @@ class GjinnApp {
         `;
     }
 
+    renderAllSections() {
+        this.renderActiveWishes();
+        this.renderCompletedWishes();
+        this.renderAllWishes();
+        this.renderGallery();
+        this.renderDailyPrompt();
+    }
+
     filterGallery(filter) {
         this.renderGallery(filter);
     }
 
     toggleFavorite(id, type) {
         if (type === 'wish') {
-            const wish = this.wishes.find(w => w.id === parseInt(id));
+            const wish = this.state.wishes.find(w => w.id === parseInt(id));
             if (wish) {
                 wish.favorited = !wish.favorited;
             }
         } else if (type === 'gallery') {
-            const item = this.galleryItems.find(i => i.id == id);
+            const item = this.state.galleryItems.find(i => i.id == id);
             if (item) {
                 item.favorited = !item.favorited;
             } else {
-                // Check in wishes converted to gallery items
                 const wishId = id.toString().replace('wish-', '');
-                const wish = this.wishes.find(w => w.id === parseInt(wishId));
+                const wish = this.state.wishes.find(w => w.id === parseInt(wishId));
                 if (wish) {
                     wish.favorited = !wish.favorited;
                 }
@@ -1214,10 +974,10 @@ class GjinnApp {
     }
 
     updateStats() {
-        const totalWishes = this.wishes.length;
-        const completedCount = this.wishes.filter(w => w.status === 'completed').length;
-        const favoritesCount = this.wishes.filter(w => w.favorited).length + 
-                              this.galleryItems.filter(i => i.favorited).length;
+        const totalWishes = this.state.wishes.length;
+        const completedCount = this.state.wishes.filter(w => w.status === 'completed').length;
+        const favoritesCount = this.state.wishes.filter(w => w.favorited).length + 
+                              this.state.galleryItems.filter(i => i.favorited).length;
 
         const totalElement = document.getElementById('total-wishes');
         const completedElement = document.getElementById('completed-count');
@@ -1226,6 +986,51 @@ class GjinnApp {
         if (totalElement) totalElement.textContent = totalWishes;
         if (completedElement) completedElement.textContent = completedCount;
         if (favoritesElement) favoritesElement.textContent = favoritesCount;
+    }
+
+    async loadUserData() {
+        try {
+            const savedData = localStorage.getItem('gjinn_user');
+            if (savedData) {
+                const userData = JSON.parse(savedData);
+                this.state.user = {
+                    ...this.state.user,
+                    ...userData,
+                    favorites: new Set(userData.favorites || [])
+                };
+                return userData;
+            }
+            return null;
+        } catch (error) {
+            console.error('Error loading user data:', error);
+            this.handleError(error, 'loadUserData');
+            return null;
+        }
+    }
+
+    async loadGalleryItems() {
+        try {
+            const savedItems = localStorage.getItem('gjinn_gallery');
+            const items = savedItems ? JSON.parse(savedItems) : [];
+            
+            this.state.galleryItems = items;
+            this.state.currentWishId = items.length > 0 ? Math.max(...items.map(i => i.id || 0)) + 1 : 1;
+            
+            return items;
+        } catch (error) {
+            console.error('Error loading gallery items:', error);
+            this.handleError(error, 'loadGalleryItems');
+            return [];
+        }
+    }
+
+    saveSettings() {
+        try {
+            localStorage.setItem('gjinn_settings', JSON.stringify(this.state.settings));
+            console.log('Settings saved:', this.state.settings);
+        } catch (error) {
+            console.error('Error saving settings:', error);
+        }
     }
 
     createMagicParticles() {
@@ -1251,7 +1056,6 @@ class GjinnApp {
             particlesContainer.appendChild(particle);
         }
 
-        // Add particle animation keyframes
         if (!document.getElementById('particle-styles')) {
             const style = document.createElement('style');
             style.id = 'particle-styles';
@@ -1326,7 +1130,6 @@ class GjinnApp {
             messageEl.textContent = message;
             modal.classList.remove('hidden');
             
-            // Auto close after 3 seconds
             setTimeout(() => {
                 this.closeSuccessModal();
             }, 3000);
@@ -1341,7 +1144,6 @@ class GjinnApp {
     }
 
     showNotification(message, type = 'info') {
-        // Create a simple notification
         const notification = document.createElement('div');
         notification.style.cssText = `
             position: fixed;
@@ -1372,7 +1174,6 @@ class GjinnApp {
             }, 300);
         }, 3000);
 
-        // Add animation styles
         if (!document.getElementById('notification-styles')) {
             const style = document.createElement('style');
             style.id = 'notification-styles';
@@ -1410,14 +1211,10 @@ class GjinnApp {
         }
     }
 
-    saveSettings() {
-        // Save to localStorage
-        try {
-            localStorage.setItem('gjinn_settings', JSON.stringify(this.state.settings));
-            console.log('Settings saved:', this.state.settings);
-        } catch (error) {
-            console.error('Error saving settings:', error);
-        }
+    handleError(error, context) {
+        console.error(`Error in ${context}:`, error);
+        this.state.error = error.message;
+        this.showNotification(`An error occurred: ${error.message}`, 'error');
     }
 }
 
@@ -1428,12 +1225,31 @@ function closeSuccessModal() {
     }
 }
 
+// Listen for user authentication events
+if (typeof window !== 'undefined') {
+    window.addEventListener('userSignedIn', (event) => {
+        console.log('👤 User signed in:', event.detail);
+        if (window.app) {
+            window.app.updateUserUI();
+            window.app.showNotification('Welcome! You\'re now signed in.', 'success');
+        }
+    });
+    
+    window.addEventListener('userSignedOut', () => {
+        console.log('👤 User signed out');
+        if (window.app) {
+            window.app.updateUserUI();
+        }
+    });
+}
+
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('🚀 DOM loaded, initializing Gjinn...');
     window.app = new GjinnApp();
 });
 
-// Add some CSS for disabled animations
+// Add CSS for disabled animations
 if (!document.getElementById('no-animations-styles')) {
     const noAnimationsStyle = document.createElement('style');
     noAnimationsStyle.id = 'no-animations-styles';
