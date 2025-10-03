@@ -1,6 +1,6 @@
 {
   "name": "gjinn",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Gjinn is a modern web application that transforms your creative ideas into stunning AI-generated images. Inspired by the mystical genies of legend, Gjinn grants your visual wishes with the power of AI.",
   "main": "app.js",
   "scripts": {
