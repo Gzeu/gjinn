@@ -1,55 +1,57 @@
-// Load environment variables (will be replaced by Vite's import.meta.env in production)
-const ENV = {
-    SUPABASE_URL: import.meta.env.VITE_SUPABASE_URL || 'https://jgejprgxwznijtwlfxhs.supabase.co',
-    SUPABASE_ANON_KEY: import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpnZWpwcmd4d3puaWp0d2xmeGhzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkzODc5MTksImV4cCI6MjA3NDk2MzkxOX0.qOr0dFPRYfBZRsAL9KheSlv9PH-CaC-lll9KYRhqtsQ',
-    POLLINATION_API_KEY: import.meta.env.VITE_POLLINATION_API_KEY || ''
+// Environment variables (automatically injected by GitHub Pages/Vite)
+const getEnvVar = (key, fallback = '') => {
+    // For GitHub Pages deployment, variables are injected via build process
+    if (typeof process !== 'undefined' && process.env) {
+        return process.env[key] || fallback;
+    }
+    // For client-side access (GitHub Pages replaces these during build)
+    return window[`__ENV_${key}__`] || fallback;
 };
 
 // Configuration for the application
 const CONFIG = {
+    // Environment variables
+    ENV: {
+        SUPABASE_URL: getEnvVar('VITE_SUPABASE_URL'),
+        SUPABASE_ANON_KEY: getEnvVar('VITE_SUPABASE_ANON_KEY'),
+        POLLINATION_API_KEY: getEnvVar('VITE_POLLINATION_API_KEY')
+    },
+    
     // Supabase Configuration
     SUPABASE: {
-        URL: ENV.SUPABASE_URL,
-        ANON_KEY: ENV.SUPABASE_ANON_KEY,
+        URL: getEnvVar('VITE_SUPABASE_URL'),
+        ANON_KEY: getEnvVar('VITE_SUPABASE_ANON_KEY'),
         TABLES: {
-            IMAGES: 'generated_images',
-            USERS: 'profiles',
-            REQUESTS: 'generation_requests',
-            SETTINGS: 'user_settings'
+            IMAGES: 'gjinn_images',
+            USERS: 'gjinn_users',
+            DAILY_COMPLETIONS: 'gjinn_daily_completions',
+            USER_SETTINGS: 'gjinn_user_settings'
         },
         STORAGE: {
-            BUCKET: 'generated-images',
-            AVATARS: 'user-avatars'
+            BUCKET: 'gjinn-generated-images'
         }
     },
     
     // Pollination Configuration
     POLLINATION: {
-        API_KEY: ENV.POLLINATION_API_KEY,
+        API_KEY: getEnvVar('VITE_POLLINATION_API_KEY'),
         MODELS: {
-            STABLE_DIFFUSION: 'stability-ai/sdxl',
-            KANDINSKY: 'kandinsky-community/kandinsky-2',
-            DALL_E: 'openai/dall-e-3',
-            DEFAULT: 'stability-ai/sdxl'
+            FLUX: 'flux',
+            STABLE_DIFFUSION: 'stable-diffusion',
+            DALL_E: 'dall-e-3',
+            DEFAULT: 'flux'
         },
         DEFAULT_SETTINGS: {
             steps: 30,
             width: 1024,
             height: 1024,
             cfg_scale: 7.5,
-            sampler: 'euler_a',
             seed: -1,
             upscale: true
         },
         API: {
-            BASE_URL: 'https://api.pollinations.ai',
-            ENDPOINTS: {
-                GENERATE: '/generate',
-                STATUS: '/status',
-                MODELS: '/models',
-                ACCOUNT: '/account'
-            },
-            TIMEOUT: 30000, // 30 seconds
+            BASE_URL: 'https://image.pollinations.ai/prompt',
+            TIMEOUT: 60000, // 60 seconds for image generation
             MAX_RETRIES: 3
         }
     },
@@ -57,89 +59,194 @@ const CONFIG = {
     // Application Settings
     APP: {
         NAME: 'Gjinn',
-        VERSION: '1.0.0',
+        VERSION: '2.1.0',
         MAX_REQUESTS_PER_HOUR: 20,
         CACHE_TTL: 3600, // 1 hour in seconds
-        DEFAULT_THEME: 'system', // 'light', 'dark', or 'system'
-        UPLOAD_LIMIT: 10 * 1024 * 1024, // 10MB
-        SUPPORTED_IMAGE_TYPES: ['image/jpeg', 'image/png', 'image/webp'],
+        DEFAULT_THEME: 'system',
         FEATURES: {
-            UPLOADS: true,
-            SOCIAL_LOGIN: true,
-            OFFLINE_MODE: true
+            DAILY_PROMPTS: true,
+            USER_AUTH: true,
+            IMAGE_STORAGE: true,
+            OFFLINE_MODE: false
         }
     },
     
     // UI Settings
     UI: {
-        TOAST_DURATION: 5000, // 5 seconds
-        LOADING_DELAY: 300, // ms before showing loading indicator
-        DEBOUNCE_DELAY: 500, // ms for search/input debouncing
-        INFINITE_SCROLL_THRESHOLD: 200 // pixels from bottom to trigger loading more
+        TOAST_DURATION: 5000,
+        LOADING_DELAY: 300,
+        DEBOUNCE_DELAY: 500,
+        ANIMATION_DURATION: 300
+    }
+};
+
+// Initialize Supabase client only if we have the required config
+let supabaseClient = null;
+
+if (typeof window !== 'undefined' && CONFIG.SUPABASE.URL && CONFIG.SUPABASE.ANON_KEY) {
+    try {
+        // Load Supabase if not already loaded
+        if (typeof supabase === 'undefined' && window.supabase) {
+            supabaseClient = window.supabase.createClient(
+                CONFIG.SUPABASE.URL,
+                CONFIG.SUPABASE.ANON_KEY,
+                {
+                    auth: {
+                        persistSession: true,
+                        autoRefreshToken: true,
+                        detectSessionInUrl: true,
+                        storage: window.localStorage,
+                        storageKey: 'gjinn-auth-token'
+                    }
+                }
+            );
+            
+            // Make it globally available
+            window.supabase = supabaseClient;
+            console.log('✅ Supabase initialized successfully');
+        }
+    } catch (error) {
+        console.warn('⚠️ Supabase initialization failed:', error.message);
+    }
+} else {
+    console.log('ℹ️ Supabase not configured - running in local mode');
+}
+
+// Initialize Pollination if available
+if (typeof window !== 'undefined' && window.Pollinations && CONFIG.POLLINATION.API_KEY) {
+    try {
+        window.Pollinations.configure({
+            apiKey: CONFIG.POLLINATION.API_KEY
+        });
+        console.log('✅ Pollination API initialized successfully');
+    } catch (error) {
+        console.warn('⚠️ Pollination initialization failed:', error.message);
+    }
+}
+
+// Database Schema Helper Functions
+const DB_HELPERS = {
+    // Images table operations
+    async saveImage(imageData) {
+        if (!supabaseClient) {
+            console.warn('Supabase not available, saving to localStorage');
+            const saved = JSON.parse(localStorage.getItem('gjinn_images') || '[]');
+            saved.unshift(imageData);
+            localStorage.setItem('gjinn_images', JSON.stringify(saved));
+            return imageData;
+        }
+        
+        try {
+            const { data, error } = await supabaseClient
+                .from(CONFIG.SUPABASE.TABLES.IMAGES)
+                .insert([{
+                    user_id: imageData.userId,
+                    prompt: imageData.prompt,
+                    image_url: imageData.imageUrl,
+                    model_used: imageData.model,
+                    settings: imageData.settings,
+                    is_daily_prompt: imageData.isDailyPrompt || false,
+                    created_at: new Date().toISOString()
+                }])
+                .select()
+                .single();
+                
+            if (error) throw error;
+            return data;
+        } catch (error) {
+            console.error('Error saving image:', error);
+            // Fallback to localStorage
+            const saved = JSON.parse(localStorage.getItem('gjinn_images') || '[]');
+            saved.unshift(imageData);
+            localStorage.setItem('gjinn_images', JSON.stringify(saved));
+            return imageData;
+        }
     },
     
-    // Error Messages
-    ERRORS: {
-        AUTH: {
-            NOT_LOGGED_IN: 'You must be logged in to perform this action',
-            PERMISSION_DENIED: 'You do not have permission to perform this action',
-            INVALID_CREDENTIALS: 'Invalid email or password',
-            EMAIL_TAKEN: 'Email is already in use',
-            WEAK_PASSWORD: 'Password should be at least 6 characters',
-            INVALID_EMAIL: 'Please enter a valid email address'
-        },
-        API: {
-            TIMEOUT: 'Request timed out. Please try again.',
-            NETWORK: 'Network error. Please check your connection.',
-            SERVER: 'Server error. Please try again later.'
+    // Get user's images
+    async getUserImages(userId, limit = 20) {
+        if (!supabaseClient) {
+            return JSON.parse(localStorage.getItem('gjinn_images') || '[]').slice(0, limit);
+        }
+        
+        try {
+            const { data, error } = await supabaseClient
+                .from(CONFIG.SUPABASE.TABLES.IMAGES)
+                .select('*')
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false })
+                .limit(limit);
+                
+            if (error) throw error;
+            return data || [];
+        } catch (error) {
+            console.error('Error fetching images:', error);
+            return JSON.parse(localStorage.getItem('gjinn_images') || '[]').slice(0, limit);
+        }
+    },
+    
+    // Save daily prompt completion
+    async saveDailyCompletion(userId, promptId, imageId) {
+        if (!supabaseClient) {
+            const completions = JSON.parse(localStorage.getItem('gjinn_daily_completions') || '[]');
+            completions.push({
+                user_id: userId,
+                prompt_id: promptId,
+                image_id: imageId,
+                completed_at: new Date().toISOString(),
+                date: new Date().toDateString()
+            });
+            localStorage.setItem('gjinn_daily_completions', JSON.stringify(completions));
+            return;
+        }
+        
+        try {
+            const { error } = await supabaseClient
+                .from(CONFIG.SUPABASE.TABLES.DAILY_COMPLETIONS)
+                .insert([{
+                    user_id: userId,
+                    prompt_id: promptId,
+                    image_id: imageId,
+                    completion_date: new Date().toDateString(),
+                    created_at: new Date().toISOString()
+                }]);
+                
+            if (error) throw error;
+        } catch (error) {
+            console.error('Error saving daily completion:', error);
         }
     }
 };
 
-// Initialize Supabase client
-let supabase;
-
-if (typeof window !== 'undefined') {
-    supabase = supabase.createClient(
-        CONFIG.SUPABASE.URL,
-        CONFIG.SUPABASE.ANON_KEY,
-        {
-            auth: {
-                persistSession: true,
-                autoRefreshToken: true,
-                detectSessionInUrl: true,
-                storage: window.localStorage,
-                storageKey: 'sb-auth-token'
-            },
-            realtime: {
-                params: {
-                    eventsPerSecond: 10
-                }
-            }
-        }
-    );
-}
-
-// Initialize Pollination if available
-if (window.Pollinations) {
-    window.Pollinations.configure({
-        apiKey: CONFIG.POLLINATION.API_KEY,
-        baseUrl: CONFIG.POLLINATION.API.BASE_URL
-    });
-}
-
-// Make config available globally
+// Make everything available globally
 if (typeof window !== 'undefined') {
     window.CONFIG = CONFIG;
-    window.ENV = ENV;
+    window.DB_HELPERS = DB_HELPERS;
+    
+    // Initialize database tables if needed
+    if (supabaseClient) {
+        window.addEventListener('load', async () => {
+            try {
+                // Test connection
+                await supabaseClient.from(CONFIG.SUPABASE.TABLES.IMAGES).select('count', { count: 'exact', head: true });
+                console.log('✅ Database connection verified');
+            } catch (error) {
+                console.warn('⚠️ Database tables may need setup:', error.message);
+            }
+        });
+    }
 }
 
 // Export for ES modules
-export { CONFIG, ENV, supabase };
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { CONFIG, DB_HELPERS, supabaseClient };
+}
 
-// Log environment in development
-if (import.meta.env.DEV) {
-    console.log('Running in development mode');
-    console.log('Supabase URL:', CONFIG.SUPABASE.URL);
-    console.log('App Version:', CONFIG.APP.VERSION);
+// Development logging
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    console.log('🔧 Development mode - Config loaded:', {
+        supabaseConfigured: !!(CONFIG.SUPABASE.URL && CONFIG.SUPABASE.ANON_KEY),
+        pollinationConfigured: !!CONFIG.POLLINATION.API_KEY,
+        version: CONFIG.APP.VERSION
+    });
 }
